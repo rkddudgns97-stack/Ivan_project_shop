@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vercel/
+.env
+.env.local
+backend/.env
+backend/dist/
+backend/node_modules/
+backend/prisma/dev.db
+*.log

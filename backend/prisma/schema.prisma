@@ -1,0 +1,281 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  LEAVE
+}
+
+enum Role {
+  EMPLOYEE
+  ADMIN
+}
+
+enum PointLedgerType {
+  GRANT
+  RECHARGE
+  RESERVED
+  USE
+  REFUND
+  ADJUST_ADD
+  ADJUST_SUB
+  EXPIRE
+}
+
+enum AuthCodePurpose {
+  SIGNUP
+  LOGIN
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  SOLD_OUT
+}
+
+enum StockStatus {
+  IN_STOCK
+  LOW_STOCK
+  OUT_OF_STOCK
+}
+
+enum OrderStatus {
+  CREATED
+  PAID
+  PREPARING
+  SHIPPED
+  DELIVERED
+  CANCEL_REQUESTED
+  CANCELLED
+  RETURN_REQUESTED
+  RETURNED
+}
+
+model User {
+  id                String            @id @default(cuid())
+  employeeNo        String            @unique
+  name              String
+  email             String            @unique
+  emailVerified     Boolean           @default(false)
+  authProvider      String            @default("email")
+  status            UserStatus        @default(ACTIVE)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  roles             UserRole[]
+  authCodes         AuthCode[]
+  pointWallet       PointWallet?
+  pointLedgers      PointLedger[]
+  shippingAddresses ShippingAddress[]
+  cart              Cart?
+  orders            Order[]
+}
+
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  role   Role
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+}
+
+model AuthCode {
+  id         String          @id @default(cuid())
+  requestId  String          @unique
+  email      String
+  purpose    AuthCodePurpose
+  code       String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  userId     String?
+  user       User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt  DateTime        @default(now())
+}
+
+model PointWallet {
+  id             String     @id @default(cuid())
+  userId         String     @unique
+  availablePoint Int        @default(0)
+  reservedPoint  Int        @default(0)
+  expiringPoint  Int        @default(0)
+  expiringAt     DateTime?
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PointLedger {
+  id             String          @id @default(cuid())
+  userId         String
+  type           PointLedgerType
+  amount         Int
+  balanceAfter   Int
+  relatedOrderId String?
+  description    String
+  createdAt      DateTime        @default(now())
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  imageUrl    String?
+  products    Product[]
+}
+
+model Product {
+  id            String                @id @default(cuid())
+  name          String
+  thumbnailUrl  String
+  pointPrice    Int
+  cashPrice     Int                   @default(0)
+  status        ProductStatus         @default(DRAFT)
+  stockStatus   StockStatus           @default(IN_STOCK)
+  badge         String?
+  categoryId    String
+  description   String?
+  deliveryInfo  String?
+  purchaseLimit Int?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  category      Category              @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  variants      ProductVariant[]
+  images        ProductImage[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  inventoryLogs InventoryAdjustment[]
+}
+
+model ProductVariant {
+  id         String   @id @default(cuid())
+  productId  String
+  name       String
+  pointPrice Int
+  cashPrice  Int      @default(0)
+  stock      Int
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems  CartItem[]
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  url       String
+  sortOrder Int     @default(0)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items      CartItem[]
+}
+
+model CartItem {
+  id                  String          @id @default(cuid())
+  cartId              String
+  productId           String
+  variantId           String?
+  quantity            Int
+  pointPriceSnapshot  Int
+  cashPriceSnapshot   Int             @default(0)
+  productNameSnapshot String
+  thumbnailUrlSnapshot String
+  variantNameSnapshot String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  cart                Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product             Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant             ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+}
+
+model ShippingAddress {
+  id            String   @id @default(cuid())
+  userId        String
+  recipientName String
+  phone         String
+  zipCode       String
+  address1      String
+  address2      String
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Order {
+  id             String               @id @default(cuid())
+  orderNo        String               @unique
+  userId         String
+  status         OrderStatus          @default(CREATED)
+  usedPoint      Int
+  additionalCashAmount Int            @default(0)
+  paymentMethod  String               @default("POINT_ONLY")
+  paymentStatus  String               @default("PAID")
+  shippingFeeCashAmount Int           @default(0)
+  discountCashAmount Int              @default(0)
+  shipmentCarrier String?
+  trackingNo     String?
+  shippedAt      DateTime?
+  cancelAvailable Boolean             @default(false)
+  returnAvailable Boolean             @default(false)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items          OrderItem[]
+  statuses       OrderStatusHistory[]
+}
+
+model OrderItem {
+  id            String   @id @default(cuid())
+  orderId       String
+  productId     String?
+  productName   String
+  thumbnailUrl  String
+  variantName   String?
+  quantity      Int
+  pointPrice    Int
+  cashPrice     Int      @default(0)
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product       Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  note      String?
+  timestamp DateTime    @default(now())
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model PointGrantBatch {
+  id            String     @id @default(cuid())
+  batchKey      String     @unique
+  amount        Int
+  targetStatus  UserStatus
+  expiresAt     DateTime
+  description   String
+  processedCount Int       @default(0)
+  createdAt     DateTime   @default(now())
+}
+
+model InventoryAdjustment {
+  id         String   @id @default(cuid())
+  productId  String
+  variantId  String?
+  delta      Int
+  reason     String
+  createdAt  DateTime @default(now())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
