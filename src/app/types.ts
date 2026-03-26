@@ -18,7 +18,6 @@ export interface EmailCodeRequest {
 export interface EmailCodeResponse {
   requestId: string;
   expiresInSeconds: number;
-  debugCode: string;
 }
 
 export interface SignupPayload {

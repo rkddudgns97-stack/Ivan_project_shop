@@ -55,10 +55,11 @@ Or:
 
 `npm run start:api:mock`
 
-## Demo auth
+## Email auth
 
-- Admin email: `admin@welfaremall.co.kr`
-- Verification code: `123456`
+- Authentication codes are sent by email
+- Set `RESEND_API_KEY` in the backend environment
+- For production, set `RESEND_FROM_EMAIL` to a verified sending address
 
 ## Deployment
 

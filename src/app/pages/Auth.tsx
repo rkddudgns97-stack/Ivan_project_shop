@@ -26,14 +26,12 @@ export function AuthPage() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [codeRequested, setCodeRequested] = useState(false);
-  const [debugCode, setDebugCode] = useState('');
   const [requestingCode, setRequestingCode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setCode('');
     setCodeRequested(false);
-    setDebugCode('');
   }, [mode]);
 
   const allowedDomainText = useMemo(
@@ -49,12 +47,12 @@ export function AuthPage() {
     const normalizedEmail = normalizeEmail(email);
 
     if (!normalizedEmail) {
-      toast.error('이메일을 먼저 입력해주세요.');
+      toast.error('이메일을 먼저 입력해 주세요.');
       return;
     }
 
     if (mode === 'signup' && !name.trim()) {
-      toast.error('이름을 입력해주세요.');
+      toast.error('이름을 입력해 주세요.');
       return;
     }
 
@@ -65,16 +63,15 @@ export function AuthPage() {
 
     setRequestingCode(true);
     try {
-      const response = await authApi.requestEmailCode({
+      await authApi.requestEmailCode({
         email: normalizedEmail,
         purpose: mode,
       });
 
       setCodeRequested(true);
-      setDebugCode(response.data.debugCode);
-      toast.success('인증 코드를 발송했습니다.');
+      toast.success('인증 메일을 발송했습니다. 메일함과 스팸함을 함께 확인해 주세요.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '인증 코드 발송에 실패했습니다.');
+      toast.error(error instanceof Error ? error.message : '인증 메일 발송에 실패했습니다.');
     } finally {
       setRequestingCode(false);
     }
@@ -86,7 +83,7 @@ export function AuthPage() {
     const normalizedEmail = normalizeEmail(email);
 
     if (!codeRequested) {
-      toast.error('먼저 이메일 인증을 요청해주세요.');
+      toast.error('먼저 이메일 인증을 요청해 주세요.');
       return;
     }
 
@@ -144,9 +141,9 @@ export function AuthPage() {
 
             <div className="grid gap-4 sm:grid-cols-3">
               {[
-                { title: '간편 가입', copy: '이메일과 인증 코드만으로 빠르게 시작할 수 있습니다.' },
+                { title: '간편 가입', copy: '회사 이메일과 인증 코드만으로 빠르게 시작할 수 있습니다.' },
                 { title: '회사 계정 제한', copy: '허용된 회사 이메일만 회원가입할 수 있습니다.' },
-                { title: '동일한 가입 정책', copy: '화면과 서버에 같은 가입 규칙이 적용됩니다.' },
+                { title: '보안 로그인', copy: '로그인마다 인증 코드를 확인해 계정을 안전하게 보호합니다.' },
               ].map((item) => (
                 <div key={item.title} className="rounded-[24px] border border-white/16 bg-white/10 p-4 backdrop-blur-sm">
                   <p className="font-semibold">{item.title}</p>
@@ -182,8 +179,8 @@ export function AuthPage() {
               <h2>{mode === 'signup' ? '이메일 인증 회원가입' : '이메일 인증 로그인'}</h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 {mode === 'signup'
-                  ? '이름과 회사 이메일을 입력한 뒤 인증 코드를 받아 회원가입을 완료하세요.'
-                  : '가입된 이메일로 인증 코드를 받아 로그인하세요.'}
+                  ? '이름과 회사 이메일을 입력한 뒤 인증 메일의 코드를 확인해 회원가입을 완료해 주세요.'
+                  : '가입된 이메일로 발송된 인증 코드를 입력해 로그인해 주세요.'}
               </p>
             </div>
 
@@ -222,7 +219,7 @@ export function AuthPage() {
                 <div>
                   <p className="font-medium text-foreground">이메일 인증</p>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    인증 코드를 발송한 뒤 5분 안에 입력해주세요.
+                    인증 메일은 5분 동안 유효합니다. 메일함과 스팸함을 함께 확인해 주세요.
                   </p>
                 </div>
                 <button
@@ -231,15 +228,9 @@ export function AuthPage() {
                   disabled={requestingCode}
                   className="inline-flex h-12 items-center justify-center rounded-[var(--radius-button)] border border-border px-5 text-sm font-medium text-foreground transition-colors hover:border-[var(--border-highlight)] hover:bg-card disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {requestingCode ? '발송 중...' : '인증 코드 받기'}
+                  {requestingCode ? '발송 중...' : '인증 메일 보내기'}
                 </button>
               </div>
-
-              {codeRequested && (
-                <div className="mt-4 rounded-[20px] border border-[var(--border-highlight)] bg-card px-4 py-3 text-sm text-muted-foreground">
-                  개발용 인증 코드: <span className="font-semibold text-primary">{debugCode}</span>
-                </div>
-              )}
             </div>
 
             <label className="block space-y-2">
@@ -247,7 +238,7 @@ export function AuthPage() {
               <input
                 value={code}
                 onChange={(event) => setCode(event.target.value)}
-                placeholder="6자리 코드를 입력하세요"
+                placeholder="메일로 받은 6자리 코드를 입력해 주세요"
                 className="h-12 w-full rounded-[var(--radius-button)] border border-border bg-background px-4 text-base outline-none transition-colors focus:border-[var(--border-highlight)] focus:ring-2 focus:ring-ring/20"
               />
             </label>
@@ -261,8 +252,7 @@ export function AuthPage() {
             </button>
 
             <div className="rounded-[20px] bg-[var(--surface-subtle)] px-4 py-3 text-sm leading-6 text-muted-foreground">
-              관리자 화면 확인이 필요하면 <span className="font-semibold text-foreground">admin@welfaremall.co.kr</span>
-              로 로그인하고 인증 코드는 <span className="font-semibold text-primary">123456</span>을 사용하면 됩니다.
+              인증 메일이 도착하지 않으면 스팸함을 확인한 뒤 잠시 후 다시 요청해 주세요.
             </div>
           </form>
         </section>
