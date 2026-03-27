@@ -58,8 +58,8 @@ Or:
 ## Email auth
 
 - Authentication codes are sent by email
-- Set `RESEND_API_KEY` in the backend environment
-- For production, set `RESEND_FROM_EMAIL` to a verified sending address
+- Configure Gmail SMTP in the backend environment
+- Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
 
 ## Deployment
 

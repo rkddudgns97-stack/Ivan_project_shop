@@ -6,6 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import nodemailer from 'nodemailer';
 import { AuthCodePurpose, Role, UserStatus } from '@prisma/client';
 import { mapUser } from '../../common/mappers';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -177,13 +178,26 @@ export class AuthService {
     verificationCode: string;
     expiresInMinutes: number;
   }) {
-    const apiKey = process.env.RESEND_API_KEY?.trim();
-    const fromEmail = process.env.RESEND_FROM_EMAIL?.trim() || 'Welfare Mall <onboarding@resend.dev>';
-    const replyTo = process.env.RESEND_REPLY_TO?.trim();
+    const host = process.env.SMTP_HOST?.trim();
+    const port = Number(process.env.SMTP_PORT || 465);
+    const secure = (process.env.SMTP_SECURE ?? 'true').trim().toLowerCase() === 'true';
+    const user = process.env.SMTP_USER?.trim();
+    const pass = process.env.SMTP_PASS?.trim();
+    const from = process.env.SMTP_FROM?.trim() || user;
 
-    if (!apiKey) {
-      throw new ServiceUnavailableException('이메일 발송 서비스가 아직 설정되지 않았습니다.');
+    if (!host || !user || !pass || !from) {
+      throw new ServiceUnavailableException('이메일 발송용 SMTP 설정이 아직 완료되지 않았습니다.');
     }
+
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: {
+        user,
+        pass,
+      },
+    });
 
     const subject =
       params.purpose === 'signup'
@@ -211,27 +225,17 @@ export class AuthService {
       </div>
     `;
 
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [params.email],
+    try {
+      await transporter.sendMail({
+        from,
+        to: params.email,
         subject,
         html,
         text: `${intro}\n인증코드: ${params.verificationCode}\n유효 시간: ${params.expiresInMinutes}분`,
-        ...(replyTo ? { reply_to: replyTo } : {}),
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new InternalServerErrorException(
-        `인증 메일 발송에 실패했습니다. ${errorText || '메일 서비스 응답을 확인해 주세요.'}`,
-      );
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'SMTP 서버 응답을 확인해 주세요.';
+      throw new InternalServerErrorException(`인증 메일 발송에 실패했습니다. ${message}`);
     }
   }
 }
