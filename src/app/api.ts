@@ -2,10 +2,9 @@ import { readStoredAuthUser } from './auth/session';
 import type {
   AdminDashboard,
   ApiResponse,
+  AuthSignupResult,
   Cart,
   Category,
-  EmailCodeRequest,
-  EmailCodeResponse,
   LoginPayload,
   Order,
   PaginatedResponse,
@@ -80,15 +79,8 @@ async function uploadForm<T>(path: string, formData: FormData): Promise<ApiRespo
 }
 
 export const authApi = {
-  requestEmailCode(payload: EmailCodeRequest) {
-    return request<EmailCodeResponse>('/api/v1/auth/email-code', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  },
-
   signupWithEmail(payload: SignupPayload) {
-    return request<User>('/api/v1/auth/signup', {
+    return request<AuthSignupResult>('/api/v1/auth/signup', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -338,6 +330,13 @@ export const adminApi = {
 
   getUserDetail(userId: string) {
     return request<User & { pointBalance: PointBalance }>(`/api/v1/admin/users/${userId}`);
+  },
+
+  updateUserStatus(userId: string, status: string) {
+    return request<User>(`/api/v1/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
   },
 
   createProduct(data: AdminProductPayload) {

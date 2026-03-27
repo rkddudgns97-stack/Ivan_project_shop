@@ -108,6 +108,18 @@ export class AdminService {
     };
   }
 
+  async updateUserStatus(userId: string, status: string) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        status: status.toUpperCase() as UserStatus,
+      },
+      include: { roles: true },
+    });
+
+    return mapUser(user);
+  }
+
   async getProducts(query?: string, status?: string, page = 1, size = 20) {
     const where = {
       ...(query ? { name: { contains: query } } : {}),

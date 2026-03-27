@@ -1,37 +1,30 @@
-// 사용자 관련 타입
 export interface User {
   id: string;
   employeeNo: string;
   name: string;
   email: string;
   emailVerified: boolean;
-  authProvider: 'email';
+  authProvider: 'email' | 'password';
   status: 'active' | 'inactive' | 'leave';
   roles: ('employee' | 'admin')[];
-}
-
-export interface EmailCodeRequest {
-  email: string;
-  purpose: 'signup' | 'login';
-}
-
-export interface EmailCodeResponse {
-  requestId: string;
-  expiresInSeconds: number;
 }
 
 export interface SignupPayload {
   name: string;
   email: string;
-  code: string;
+  password: string;
 }
 
 export interface LoginPayload {
   email: string;
-  code: string;
+  password: string;
 }
 
-// 포인트 관련 타입
+export interface AuthSignupResult {
+  message: string;
+  user: User;
+}
+
 export interface PointBalance {
   availablePoint: number;
   reservedPoint: number;
@@ -61,7 +54,6 @@ export interface PaymentSummary {
   finalCashAmount: number;
 }
 
-// 카테고리 관련 타입
 export interface Category {
   id: string;
   name: string;
@@ -69,7 +61,6 @@ export interface Category {
   imageUrl?: string;
 }
 
-// 상품 관련 타입
 export interface Product {
   productId: string;
   name: string;
@@ -98,7 +89,6 @@ export interface ProductVariant {
   stock: number;
 }
 
-// 장바구니 관련 타입
 export interface CartItem {
   cartItemId: string;
   productId: string;
@@ -119,11 +109,19 @@ export interface Cart {
   paymentSummary: PaymentSummary;
 }
 
-// 주문 관련 타입
 export interface Order {
   orderId: string;
   orderNo: string;
-  status: 'created' | 'paid' | 'preparing' | 'shipped' | 'delivered' | 'cancel_requested' | 'cancelled' | 'return_requested' | 'returned';
+  status:
+    | 'created'
+    | 'paid'
+    | 'preparing'
+    | 'shipped'
+    | 'delivered'
+    | 'cancel_requested'
+    | 'cancelled'
+    | 'return_requested'
+    | 'returned';
   items: OrderItem[];
   usedPoint: number;
   additionalCashAmount: number;
@@ -160,7 +158,6 @@ export interface StatusHistory {
   note?: string;
 }
 
-// 배송지 관련 타입
 export interface ShippingAddress {
   addressId: string;
   recipientName: string;
@@ -171,7 +168,6 @@ export interface ShippingAddress {
   isDefault: boolean;
 }
 
-// 관리자 관련 타입
 export interface AdminDashboard {
   userCount: number;
   activeProductCount: number;
@@ -181,7 +177,6 @@ export interface AdminDashboard {
   lowStockCount: number;
 }
 
-// API 응답 타입
 export interface ApiResponse<T> {
   success: boolean;
   data: T;
@@ -196,7 +191,6 @@ export interface ApiError {
   };
 }
 
-// 페이지네이션 타입
 export interface PaginationMeta {
   page: number;
   size: number;

@@ -45,6 +45,16 @@ export class AdminController {
     return { success: true, data: await this.adminService.getUserDetail(userId) };
   }
 
+  @Patch('users/:userId/status')
+  async updateUserStatus(
+    @Req() req: Request,
+    @Param('userId') userId: string,
+    @Body() body: { status: string },
+  ) {
+    requireAdmin(req);
+    return { success: true, data: await this.adminService.updateUserStatus(userId, body.status) };
+  }
+
   @Get('products')
   async getProducts(
     @Req() req: Request,

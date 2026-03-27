@@ -1,6 +1,21 @@
-import { PrismaClient, ProductStatus, Role, StockStatus, UserStatus, PointLedgerType, OrderStatus } from '@prisma/client';
+import crypto from 'node:crypto';
+import {
+  OrderStatus,
+  PointLedgerType,
+  PrismaClient,
+  ProductStatus,
+  Role,
+  StockStatus,
+  UserStatus,
+} from '@prisma/client';
 
 const prisma = new PrismaClient();
+
+function hashPassword(password: string) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derivedKey = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${derivedKey}`;
+}
 
 async function main() {
   await prisma.orderStatusHistory.deleteMany();
@@ -36,13 +51,17 @@ async function main() {
     ),
   );
 
+  const adminPassword = 'Admin1234!';
+  const employeePassword = 'Welcome123!';
+
   const admin = await prisma.user.create({
     data: {
       employeeNo: 'E240001',
-      name: 'Hong Gildong',
+      name: '관리자',
       email: 'admin@welfaremall.co.kr',
+      passwordHash: hashPassword(adminPassword),
       emailVerified: true,
-      authProvider: 'email',
+      authProvider: 'password',
       status: UserStatus.ACTIVE,
       roles: {
         create: [{ role: Role.EMPLOYEE }, { role: Role.ADMIN }],
@@ -58,11 +77,11 @@ async function main() {
       shippingAddresses: {
         create: [
           {
-            recipientName: 'Hong Gildong',
+            recipientName: '관리자',
             phone: '010-1234-5678',
             zipCode: '06234',
-            address1: '123 Teheran-ro, Gangnam-gu, Seoul',
-            address2: '101-1201',
+            address1: '서울특별시 강남구 테헤란로 123',
+            address2: '101동 1201호',
             isDefault: true,
           },
         ],
@@ -74,24 +93,26 @@ async function main() {
 
   const users = await Promise.all(
     [
-      ['E240002', 'Kim Cheolsu', 'kim@example.com'],
-      ['E240003', 'Lee Younghee', 'lee@example.com'],
-    ].map(([employeeNo, name, email]) =>
+      ['E240002', '김민수', 'kim@example.com', UserStatus.ACTIVE],
+      ['E240003', '이서연', 'lee@example.com', UserStatus.ACTIVE],
+      ['E240004', '박준호', 'park@example.com', UserStatus.INACTIVE],
+    ].map(([employeeNo, name, email, status]) =>
       prisma.user.create({
         data: {
           employeeNo,
           name,
           email,
+          passwordHash: hashPassword(employeePassword),
           emailVerified: true,
-          authProvider: 'email',
-          status: UserStatus.ACTIVE,
+          authProvider: 'password',
+          status: status as UserStatus,
           roles: { create: [{ role: Role.EMPLOYEE }] },
           pointWallet: {
             create: {
-              availablePoint: 300000,
+              availablePoint: status === UserStatus.ACTIVE ? 300000 : 0,
               reservedPoint: 0,
-              expiringPoint: 300000,
-              expiringAt: new Date('2026-12-31T14:59:59Z'),
+              expiringPoint: status === UserStatus.ACTIVE ? 300000 : 0,
+              expiringAt: status === UserStatus.ACTIVE ? new Date('2026-12-31T14:59:59Z') : null,
             },
           },
           cart: { create: {} },
@@ -100,130 +121,108 @@ async function main() {
     ),
   );
 
-  await prisma.user.create({
+  const melatoProduct = await prisma.product.create({
     data: {
-      employeeNo: 'E240004',
-      name: 'Park Minsu',
-      email: 'park@example.com',
-      emailVerified: false,
-      authProvider: 'email',
-      status: UserStatus.INACTIVE,
-      roles: { create: [{ role: Role.EMPLOYEE }] },
-      pointWallet: { create: {} },
-      cart: { create: {} },
+      name: '리포좀 멜라토프로',
+      thumbnailUrl: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400',
+      pointPrice: 49000,
+      cashPrice: 0,
+      status: ProductStatus.ACTIVE,
+      stockStatus: StockStatus.IN_STOCK,
+      badge: 'Popular',
+      categoryId: categories[5].id,
+      description: '저녁 루틴에 맞춘 수면 밸런스 웰니스 상품입니다.',
+      deliveryInfo: '해당 제품은 최초배송비가 무료이며, 단순 변심 반품 시 왕복택배비 8,000원이 부과됩니다.',
+      purchaseLimit: 3,
+      images: {
+        create: [
+          { url: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=900', sortOrder: 0 },
+          { url: 'https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=900', sortOrder: 1 },
+        ],
+      },
+      variants: {
+        create: [
+          { name: '1박스', pointPrice: 49000, cashPrice: 0, stock: 60 },
+          { name: '3박스', pointPrice: 129000, cashPrice: 0, stock: 24 },
+        ],
+      },
     },
   });
 
-  const products = await Promise.all([
-    prisma.product.create({
-      data: {
-        name: '\uB9AC\uD3EC\uC880 \uBA5C\uB77C\uD1A0\uD504\uB85C',
-        thumbnailUrl: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400',
-        pointPrice: 49000,
-        cashPrice: 0,
-        status: ProductStatus.ACTIVE,
-        stockStatus: StockStatus.IN_STOCK,
-        badge: 'Popular',
-        categoryId: categories[5].id,
-        description:
-          '\uC800\uB141 \uB8E8\uD2F4\uC5D0 \uB9DE\uCD98 \uC218\uBA74 \uBC38\uB7F0\uC2A4 \uC6F0\uB2C8\uC2A4 \uC0C1\uD488\uC785\uB2C8\uB2E4.',
-        deliveryInfo:
-          '\uD574\uB2F9 \uC81C\uD488\uC740 \uCD5C\uCD08 \uBC30\uC1A1\uBE44\uAC00 \uBB34\uB8CC\uC774\uBA70, \uB2E8\uC21C \uBCC0\uC2EC \uBC18\uD488 \uC2DC \uC655\uBCF5\uD0DD\uBC30\uBE44 8,000\uC6D0\uC774 \uBD80\uACFC\uB429\uB2C8\uB2E4.',
-        purchaseLimit: 3,
-        images: {
-          create: [
-            { url: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=900', sortOrder: 0 },
-            { url: 'https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=900', sortOrder: 1 },
-          ],
-        },
-        variants: {
-          create: [
-            { name: '\u0031\uBC15\uC2A4', pointPrice: 49000, cashPrice: 0, stock: 60 },
-            { name: '\u0033\uBC15\uC2A4', pointPrice: 129000, cashPrice: 0, stock: 24 },
-          ],
-        },
+  const appleProduct = await prisma.product.create({
+    data: {
+      name: '풋사과 낙산균',
+      thumbnailUrl: 'https://images.unsplash.com/photo-1615485737451-8e5f0c2ad44b?w=400',
+      pointPrice: 39000,
+      cashPrice: 5900,
+      status: ProductStatus.ACTIVE,
+      stockStatus: StockStatus.IN_STOCK,
+      badge: 'New',
+      categoryId: categories[5].id,
+      description: '하루 시작을 가볍게 돕는 풋사과 낙산균 스틱 제품입니다.',
+      deliveryInfo: '사전예약 기간 종료 이후 순차적으로 발송됩니다.',
+      purchaseLimit: 3,
+      images: {
+        create: [
+          { url: 'https://images.unsplash.com/photo-1615485737451-8e5f0c2ad44b?w=900', sortOrder: 0 },
+          { url: 'https://images.unsplash.com/photo-1577234286642-fc512a5f8f11?w=900', sortOrder: 1 },
+        ],
       },
-    }),
-    prisma.product.create({
-      data: {
-        name: '\uD48B\uC0AC\uACFC \uB099\uC0B0\uADE0',
-        thumbnailUrl: 'https://images.unsplash.com/photo-1615485737451-8e5f0c2ad44b?w=400',
-        pointPrice: 39000,
-        cashPrice: 5900,
-        status: ProductStatus.ACTIVE,
-        stockStatus: StockStatus.IN_STOCK,
-        badge: 'New',
-        categoryId: categories[5].id,
-        description:
-          '\uD558\uB8E8 \uC2DC\uC791\uC744 \uAC00\uBCBC\uAC8C \uB3D5\uB294 \uD48B\uC0AC\uACFC \uB099\uC0B0\uADE0 \uC2A4\uD2F1 \uC81C\uD488\uC785\uB2C8\uB2E4.',
-        deliveryInfo:
-          '\uC0AC\uC804\uC608\uC57D \uAE30\uAC04 \uC885\uB8CC \uC774\uD6C4 \uC21C\uCC28\uC801\uC73C\uB85C \uBC1C\uC1A1\uB429\uB2C8\uB2E4.',
-        purchaseLimit: 3,
-        images: {
-          create: [
-            { url: 'https://images.unsplash.com/photo-1615485737451-8e5f0c2ad44b?w=900', sortOrder: 0 },
-            { url: 'https://images.unsplash.com/photo-1577234286642-fc512a5f8f11?w=900', sortOrder: 1 },
-          ],
-        },
-        variants: {
-          create: [
-            { name: '\u0031\uBC15\uC2A4', pointPrice: 39000, cashPrice: 5900, stock: 80 },
-            { name: '\u0032\uBC15\uC2A4', pointPrice: 74000, cashPrice: 9900, stock: 35 },
-          ],
-        },
+      variants: {
+        create: [
+          { name: '1박스', pointPrice: 39000, cashPrice: 5900, stock: 80 },
+          { name: '2박스', pointPrice: 74000, cashPrice: 9900, stock: 35 },
+        ],
       },
-    }),
-    prisma.product.create({
-      data: {
-        name: '\uBAA8\uB2DD\u00B7\uB098\uC774\uD2B8 \uB8E8\uD2F4 \u0033\uC138\uD2B8',
-        thumbnailUrl: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=400',
-        pointPrice: 129000,
-        cashPrice: 19000,
-        status: ProductStatus.ACTIVE,
-        stockStatus: StockStatus.LOW_STOCK,
-        badge: 'Popular',
-        categoryId: categories[5].id,
-        description:
-          '\uC544\uCE68\uC6A9 \uD48B\uC0AC\uACFC \uB099\uC0B0\uADE0\uACFC \uC800\uB141\uC6A9 \uB9AC\uD3EC\uC880 \uBA5C\uB77C\uD1A0\uD504\uB85C\uB97C \uD568\uAED8 \uB2F4\uC740 \uB8E8\uD2F4 \uAD6C\uC131\uC785\uB2C8\uB2E4.',
-        deliveryInfo:
-          '\uC138\uD2B8 \uC0C1\uD488\uC740 \uC0AC\uC804\uC608\uC57D \uC885\uB8CC \uD6C4 \uC21C\uCC28 \uBC1C\uC1A1\uB418\uBA70, \uBC18\uD488 \uC2DC \uC655\uBCF5 \uD0DD\uBC30\uBE44 \uC815\uCC45\uC774 \uC801\uC6A9\uB429\uB2C8\uB2E4.',
-        purchaseLimit: 1,
-        images: {
-          create: [
-            { url: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=900', sortOrder: 0 },
-            { url: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=900', sortOrder: 1 },
-          ],
-        },
-        variants: {
-          create: [
-            { name: '\u0033\uC138\uD2B8 \uAD6C\uC131', pointPrice: 129000, cashPrice: 19000, stock: 12 },
-          ],
-        },
+    },
+  });
+
+  const routineSetProduct = await prisma.product.create({
+    data: {
+      name: '모닝·나이트 루틴 3세트',
+      thumbnailUrl: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=400',
+      pointPrice: 129000,
+      cashPrice: 19000,
+      status: ProductStatus.ACTIVE,
+      stockStatus: StockStatus.LOW_STOCK,
+      badge: 'Popular',
+      categoryId: categories[5].id,
+      description: '아침용 풋사과 낙산균과 저녁용 리포좀 멜라토프로를 함께 담은 루틴 구성입니다.',
+      deliveryInfo: '세트 상품은 사전예약 종료 후 순차 발송되며, 반품 시 왕복 택배비 정책이 적용됩니다.',
+      purchaseLimit: 1,
+      images: {
+        create: [
+          { url: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=900', sortOrder: 0 },
+          { url: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=900', sortOrder: 1 },
+        ],
       },
-    }),
-  ]);
+      variants: {
+        create: [{ name: '3세트 구성', pointPrice: 129000, cashPrice: 19000, stock: 12 }],
+      },
+    },
+  });
 
   await prisma.cartItem.createMany({
     data: [
       {
         cartId: admin.cart!.id,
-        productId: products[0].id,
+        productId: melatoProduct.id,
         quantity: 1,
         pointPriceSnapshot: 49000,
         cashPriceSnapshot: 0,
-        productNameSnapshot: products[0].name,
-        thumbnailUrlSnapshot: products[0].thumbnailUrl,
-        variantNameSnapshot: '\u0031\uBC15\uC2A4',
+        productNameSnapshot: melatoProduct.name,
+        thumbnailUrlSnapshot: melatoProduct.thumbnailUrl,
+        variantNameSnapshot: '1박스',
       },
       {
         cartId: admin.cart!.id,
-        productId: products[1].id,
+        productId: appleProduct.id,
         quantity: 1,
         pointPriceSnapshot: 39000,
         cashPriceSnapshot: 5900,
-        productNameSnapshot: products[1].name,
-        thumbnailUrlSnapshot: products[1].thumbnailUrl,
-        variantNameSnapshot: '\u0031\uBC15\uC2A4',
+        productNameSnapshot: appleProduct.name,
+        thumbnailUrlSnapshot: appleProduct.thumbnailUrl,
+        variantNameSnapshot: '1박스',
       },
     ],
   });
@@ -235,21 +234,21 @@ async function main() {
         type: PointLedgerType.GRANT,
         amount: 300000,
         balanceAfter: 300000,
-        description: '2026 \uB144\uB3C4 \uBCF5\uC9C0\uD3EC\uC778\uD2B8 \uC9C0\uAE09',
+        description: '2026 연도 복지포인트 지급',
       },
       {
         userId: admin.id,
         type: PointLedgerType.USE,
         amount: -15000,
         balanceAfter: 285000,
-        description: '\uC0C1\uD488 \uAD6C\uB9E4',
+        description: '상품 구매',
       },
       {
         userId: admin.id,
         type: PointLedgerType.RECHARGE,
         amount: 50000,
         balanceAfter: 335000,
-        description: '\uD3EC\uC778\uD2B8 \uCDA9\uC804',
+        description: '포인트 충전',
       },
     ],
   });
@@ -263,7 +262,7 @@ async function main() {
       additionalCashAmount: 0,
       paymentMethod: 'POINT_ONLY',
       paymentStatus: 'PAID',
-      shipmentCarrier: 'CJ\uB300\uD55C\uD1B5\uC6B4',
+      shipmentCarrier: 'CJ대한통운',
       trackingNo: '1234567890',
       shippedAt: new Date('2026-03-16T10:00:00Z'),
       cancelAvailable: false,
@@ -272,9 +271,9 @@ async function main() {
       items: {
         create: [
           {
-            productId: products[0].id,
-            productName: products[0].name,
-            thumbnailUrl: products[0].thumbnailUrl,
+            productId: melatoProduct.id,
+            productName: melatoProduct.name,
+            thumbnailUrl: melatoProduct.thumbnailUrl,
             quantity: 1,
             pointPrice: 49000,
             cashPrice: 0,
@@ -301,7 +300,7 @@ async function main() {
       additionalCashAmount: 19000,
       paymentMethod: 'CARD',
       paymentStatus: 'PAID',
-      shipmentCarrier: '\uB86F\uB370\uD0DD\uBC30',
+      shipmentCarrier: '롯데택배',
       trackingNo: '9876543210',
       shippedAt: new Date('2026-03-21T09:00:00Z'),
       cancelAvailable: false,
@@ -310,9 +309,9 @@ async function main() {
       items: {
         create: [
           {
-            productId: products[2].id,
-            productName: products[2].name,
-            thumbnailUrl: products[2].thumbnailUrl,
+            productId: routineSetProduct.id,
+            productName: routineSetProduct.name,
+            thumbnailUrl: routineSetProduct.thumbnailUrl,
             quantity: 1,
             pointPrice: 129000,
             cashPrice: 19000,
@@ -329,7 +328,13 @@ async function main() {
     },
   });
 
-  console.log('Seed complete:', { adminId: admin.id, deliveredOrderId: deliveredOrder.id, userCount: users.length + 2 });
+  console.log('Seed complete:', {
+    adminId: admin.id,
+    deliveredOrderId: deliveredOrder.id,
+    userCount: users.length + 1,
+    adminLogin: { email: admin.email, password: adminPassword },
+    employeeLogin: { password: employeePassword },
+  });
 }
 
 main()

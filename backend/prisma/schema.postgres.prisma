@@ -64,6 +64,7 @@ model User {
   employeeNo        String            @unique
   name              String
   email             String            @unique
+  passwordHash      String
   emailVerified     Boolean           @default(false)
   authProvider      String            @default("email")
   status            UserStatus        @default(ACTIVE)
