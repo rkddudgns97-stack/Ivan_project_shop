@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router';
+import { Link, Navigate, useNavigate } from 'react-router';
 import { LockKeyhole, Mail, ShieldCheck, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { authApi } from '../api';
@@ -280,6 +280,13 @@ export function AuthPage() {
               {mode === 'signup'
                 ? '가입 신청 후 관리자 승인까지 시간이 걸릴 수 있습니다. 승인 완료 후 로그인해 주세요.'
                 : '로그인이 안 되면 관리자 승인 여부와 비밀번호를 먼저 확인해 주세요.'}
+            </div>
+
+            <div className="text-center text-sm text-muted-foreground">
+              관리자 계정이신가요?{' '}
+              <Link to="/admin/login" className="font-semibold text-primary hover:underline">
+                관리자 로그인으로 이동
+              </Link>
             </div>
           </form>
         </section>

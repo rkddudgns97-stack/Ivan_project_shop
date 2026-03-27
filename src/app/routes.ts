@@ -12,6 +12,7 @@ import { MyPage } from './pages/MyPage';
 import { PointsPage } from './pages/Points';
 import { PointRechargePage } from './pages/PointRecharge';
 import { AdminDashboardPage } from './pages/admin/Dashboard';
+import { AdminLoginPage } from './pages/admin/Login';
 import { AdminProductsPage } from './pages/admin/Products';
 import { AdminUsersPage } from './pages/admin/Users';
 import { NotFound } from './pages/NotFound';
@@ -20,6 +21,10 @@ export const router = createBrowserRouter([
   {
     path: '/auth',
     Component: AuthPage,
+  },
+  {
+    path: '/admin/login',
+    Component: AdminLoginPage,
   },
   {
     path: '/',

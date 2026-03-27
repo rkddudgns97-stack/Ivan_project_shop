@@ -243,11 +243,11 @@ export function Layout() {
   const isAdmin = location.pathname.startsWith('/admin');
 
   if (!user) {
-    return <Navigate to="/auth" replace />;
+    return <Navigate to={isAdmin ? '/admin/login' : '/auth'} replace />;
   }
 
   if (isAdmin && !user.roles.includes('admin')) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/admin/login" replace />;
   }
 
   return isAdmin ? <AdminShell /> : <UserShell />;
