@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { OrderStatus, PointLedgerType, ProductStatus, StockStatus, UserStatus } from '@prisma/client';
+import { OrderStatus, PointLedgerType, Prisma, ProductStatus, StockStatus, UserStatus } from '@prisma/client';
 import { mapOrder, mapPointLedger, mapProduct, mapUser } from '../../common/mappers';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -128,6 +128,9 @@ export class AdminService {
 
     const products = await this.prisma.product.findMany({
       where,
+      include: {
+        variants: true,
+      },
       orderBy: { updatedAt: 'desc' },
       skip: (page - 1) * size,
       take: size,
@@ -195,19 +198,31 @@ export class AdminService {
       throw new BadRequestException('카테고리는 필수입니다.');
     }
 
+    const stockQuantity = normalizedPayload.stockQuantity ?? 0;
+
     const product = await this.prisma.product.create({
       data: {
         name: normalizedPayload.name ?? 'Untitled product',
         thumbnailUrl: normalizedPayload.thumbnailUrl ?? '',
         pointPrice: normalizedPayload.pointPrice ?? 0,
-        cashPrice: normalizedPayload.cashPrice ?? 0,
+        cashPrice: 0,
         status: normalizedPayload.status ?? ProductStatus.DRAFT,
-        stockStatus: normalizedPayload.stockStatus ?? StockStatus.IN_STOCK,
-        badge: normalizedPayload.badge ?? null,
+        stockStatus: this.getStockStatusByQuantity(stockQuantity),
+        badge: null,
         categoryId: normalizedPayload.categoryId,
         description: normalizedPayload.description ?? null,
         deliveryInfo: normalizedPayload.deliveryInfo ?? null,
         purchaseLimit: normalizedPayload.purchaseLimit ?? null,
+        variants: {
+          create: [
+            {
+              name: '기본 옵션',
+              pointPrice: normalizedPayload.pointPrice ?? 0,
+              cashPrice: 0,
+              stock: stockQuantity,
+            },
+          ],
+        },
         ...(imageUrls?.length
           ? {
               images: {
@@ -219,6 +234,9 @@ export class AdminService {
             }
           : {}),
       },
+      include: {
+        variants: true,
+      },
     });
 
     return mapProduct(product);
@@ -226,6 +244,7 @@ export class AdminService {
 
   async updateProduct(productId: string, payload: any) {
     const { imageUrls, ...normalizedPayload } = this.normalizeProductPayload(payload);
+    const stockQuantity = normalizedPayload.stockQuantity ?? 0;
 
     const product = await this.prisma.$transaction(async (tx) => {
       if (imageUrls) {
@@ -234,10 +253,13 @@ export class AdminService {
         });
       }
 
-      return tx.product.update({
+      const updatedProduct = await tx.product.update({
         where: { id: productId },
         data: {
           ...normalizedPayload,
+          cashPrice: 0,
+          badge: null,
+          stockStatus: this.getStockStatusByQuantity(stockQuantity),
           ...(imageUrls
             ? {
                 images: {
@@ -248,6 +270,20 @@ export class AdminService {
                 },
               }
             : {}),
+        },
+        include: {
+          variants: {
+            orderBy: { id: 'asc' },
+          },
+        },
+      });
+
+      await this.syncDefaultVariant(tx, productId, normalizedPayload.pointPrice ?? updatedProduct.pointPrice, stockQuantity);
+
+      return tx.product.findUniqueOrThrow({
+        where: { id: productId },
+        include: {
+          variants: true,
         },
       });
     });
@@ -352,7 +388,7 @@ export class AdminService {
           amount: order.usedPoint,
           balanceAfter: userWallet.availablePoint + order.usedPoint,
           relatedOrderId: order.id,
-          description: 'Order cancel refund',
+          description: '주문 취소 환불',
         },
       });
 
@@ -455,9 +491,6 @@ export class AdminService {
     const normalizedStatus = payload.status
       ? (String(payload.status).toUpperCase() as ProductStatus)
       : undefined;
-    const normalizedStockStatus = payload.stockStatus
-      ? (String(payload.stockStatus).toUpperCase() as StockStatus)
-      : undefined;
     const imageUrls = Array.isArray(payload.imageUrls)
       ? payload.imageUrls
           .map((item: unknown) => String(item).trim())
@@ -468,8 +501,7 @@ export class AdminService {
       ...(payload.name !== undefined ? { name: String(payload.name) } : {}),
       ...(payload.thumbnailUrl !== undefined ? { thumbnailUrl: String(payload.thumbnailUrl) } : {}),
       ...(payload.pointPrice !== undefined ? { pointPrice: Number(payload.pointPrice) } : {}),
-      ...(payload.cashPrice !== undefined ? { cashPrice: Number(payload.cashPrice) } : {}),
-      ...(payload.badge !== undefined ? { badge: payload.badge ? String(payload.badge) : null } : {}),
+      ...(payload.stockQuantity !== undefined ? { stockQuantity: Number(payload.stockQuantity) } : {}),
       ...(payload.categoryId !== undefined ? { categoryId: String(payload.categoryId) } : {}),
       ...(payload.description !== undefined ? { description: payload.description ? String(payload.description) : null } : {}),
       ...(payload.deliveryInfo !== undefined ? { deliveryInfo: payload.deliveryInfo ? String(payload.deliveryInfo) : null } : {}),
@@ -482,8 +514,69 @@ export class AdminService {
           }
         : {}),
       ...(normalizedStatus ? { status: normalizedStatus } : {}),
-      ...(normalizedStockStatus ? { stockStatus: normalizedStockStatus } : {}),
       ...(imageUrls !== undefined ? { imageUrls } : {}),
     };
+  }
+
+  private async syncDefaultVariant(
+    tx: Prisma.TransactionClient,
+    productId: string,
+    pointPrice: number,
+    stockQuantity: number,
+  ) {
+    const variants = await tx.productVariant.findMany({
+      where: { productId },
+      orderBy: { id: 'asc' },
+    });
+
+    if (variants.length === 0) {
+      await tx.productVariant.create({
+        data: {
+          productId,
+          name: '기본 옵션',
+          pointPrice,
+          cashPrice: 0,
+          stock: stockQuantity,
+        },
+      });
+      return;
+    }
+
+    const [firstVariant, ...otherVariants] = variants;
+
+    await tx.productVariant.update({
+      where: { id: firstVariant.id },
+      data: {
+        name: firstVariant.name || '기본 옵션',
+        pointPrice,
+        cashPrice: 0,
+        stock: stockQuantity,
+      },
+    });
+
+    await Promise.all(
+      otherVariants.map((variant: any) =>
+        tx.productVariant.update({
+          where: { id: variant.id },
+          data: {
+            pointPrice,
+            cashPrice: 0,
+            stock: 0,
+          },
+        }),
+      ),
+    );
+  }
+
+  private getStockStatusByQuantity(stockQuantity: number) {
+    if (stockQuantity <= 0) {
+      return StockStatus.OUT_OF_STOCK;
+    }
+
+    if (stockQuantity <= 10) {
+      return StockStatus.LOW_STOCK;
+    }
+
+    return StockStatus.IN_STOCK;
   }
 }

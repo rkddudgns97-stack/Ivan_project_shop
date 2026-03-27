@@ -18,6 +18,9 @@ export class CatalogService {
   async getRecommendations() {
     const products = await this.prisma.product.findMany({
       where: { status: 'ACTIVE' },
+      include: {
+        variants: true,
+      },
       orderBy: [{ createdAt: 'desc' }],
       take: 4,
     });
@@ -42,6 +45,9 @@ export class CatalogService {
 
     const products = await this.prisma.product.findMany({
       where,
+      include: {
+        variants: true,
+      },
       orderBy,
       skip: (page - 1) * size,
       take: size,

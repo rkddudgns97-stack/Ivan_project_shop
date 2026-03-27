@@ -70,6 +70,7 @@ export interface Product {
   thumbnailUrl: string;
   pointPrice: number;
   cashPrice: number;
+  stockQuantity?: number;
   status: 'draft' | 'active' | 'inactive' | 'sold_out';
   stockStatus: 'in_stock' | 'low_stock' | 'out_of_stock';
   badge?: string;

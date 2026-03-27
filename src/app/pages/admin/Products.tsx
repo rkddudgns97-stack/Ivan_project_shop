@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
-import { ArrowLeft, CirclePlus, Eye, EyeOff, ImagePlus, Pencil, Search, Trash2 } from 'lucide-react';
+import { ArrowLeft, CirclePlus, Eye, EyeOff, ImagePlus, Pencil, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminApi, categoryApi, productApi } from '../../api';
 import type { Category, Product, ProductDetail } from '../../types';
@@ -11,13 +11,11 @@ type ProductFormState = {
   thumbnailUrl: string;
   detailImageUrls: string[];
   pointPrice: string;
-  cashPrice: string;
-  badge: string;
+  stockQuantity: string;
   description: string;
   deliveryInfo: string;
   purchaseLimit: string;
   status: Product['status'];
-  stockStatus: Product['stockStatus'];
 };
 
 const STATUS_LABELS: Record<Product['status'], string> = {
@@ -27,19 +25,13 @@ const STATUS_LABELS: Record<Product['status'], string> = {
   sold_out: '품절',
 };
 
-const STOCK_STATUS_LABELS: Record<Product['stockStatus'], string> = {
-  in_stock: '재고 충분',
-  low_stock: '재고 임박',
-  out_of_stock: '품절',
-};
-
 const FILTERS = [
   { value: 'all', label: '전체' },
   { value: 'active', label: '운영 중' },
   { value: 'draft', label: '임시 저장' },
   { value: 'inactive', label: '운영 중지' },
   { value: 'sold_out', label: '품절' },
-];
+] as const;
 
 const EMPTY_FORM: ProductFormState = {
   name: '',
@@ -47,13 +39,11 @@ const EMPTY_FORM: ProductFormState = {
   thumbnailUrl: '',
   detailImageUrls: [],
   pointPrice: '',
-  cashPrice: '0',
-  badge: '',
+  stockQuantity: '0',
   description: '',
   deliveryInfo: '',
   purchaseLimit: '',
   status: 'draft',
-  stockStatus: 'in_stock',
 };
 
 const DETAIL_GUIDE = '권장 크기 780 x 5000 px / 10MB 이하 / JPG, PNG';
@@ -65,14 +55,24 @@ function toFormState(product: ProductDetail): ProductFormState {
     thumbnailUrl: product.thumbnailUrl,
     detailImageUrls: product.images,
     pointPrice: String(product.pointPrice),
-    cashPrice: String(product.cashPrice ?? 0),
-    badge: product.badge ?? '',
+    stockQuantity: String(
+      product.stockQuantity ?? product.variants?.reduce((sum, variant) => sum + variant.stock, 0) ?? 0,
+    ),
     description: product.description ?? '',
     deliveryInfo: product.deliveryInfo ?? '',
     purchaseLimit: product.purchaseLimit ? String(product.purchaseLimit) : '',
     status: product.status,
-    stockStatus: product.stockStatus,
   };
+}
+
+function getStockLabel(stockQuantity: number) {
+  if (stockQuantity <= 0) return '품절';
+  if (stockQuantity <= 10) return '품절 임박';
+  return '재고 충분';
+}
+
+function isCloudinaryConfigError(message: string) {
+  return message.includes('Cloudinary');
 }
 
 export function AdminProductsPage() {
@@ -91,9 +91,10 @@ export function AdminProductsPage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<'thumbnail' | 'detail' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<(typeof FILTERS)[number]['value']>('all');
 
   const detailPreviewImages = useMemo(() => form.detailImageUrls.slice(0, 4), [form.detailImageUrls]);
+  const stockQuantity = Number(form.stockQuantity || '0');
 
   const loadProducts = async () => {
     setLoading(true);
@@ -127,7 +128,7 @@ export function AdminProductsPage() {
           setForm({
             ...EMPTY_FORM,
             categoryId: categoryResponse.data[0]?.id ?? '',
-            deliveryInfo: '결제 후 2~3영업일 내 순차적으로 배송됩니다.',
+            deliveryInfo: '결제 후 2~3영업일 내 순차 발송됩니다.',
           });
           setProductDetail(null);
           return;
@@ -159,7 +160,7 @@ export function AdminProductsPage() {
     key: keyof ProductFormState,
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => {
-    setForm((prev) => ({ ...prev, [key]: event.target.value }));
+    setForm((previous) => ({ ...previous, [key]: event.target.value }));
   };
 
   const handleImageUpload = async (
@@ -174,16 +175,27 @@ export function AdminProductsPage() {
       const uploaded = await Promise.all(files.map((file) => adminApi.uploadImage(file)));
       const urls = uploaded.map((item) => item.data.url);
 
-      setForm((prev) => ({
-        ...prev,
-        thumbnailUrl: type === 'thumbnail' ? urls[0] : prev.thumbnailUrl,
-        detailImageUrls: type === 'detail' ? [...prev.detailImageUrls, ...urls] : prev.detailImageUrls,
+      setForm((previous) => ({
+        ...previous,
+        thumbnailUrl: type === 'thumbnail' ? urls[0] : previous.thumbnailUrl,
+        detailImageUrls:
+          type === 'detail' ? [...previous.detailImageUrls, ...urls] : previous.detailImageUrls,
       }));
 
-      toast.success(type === 'thumbnail' ? '대표 이미지를 업로드했습니다.' : `상세 이미지 ${urls.length}장을 업로드했습니다.`);
+      toast.success(
+        type === 'thumbnail'
+          ? '대표 이미지를 업로드했습니다.'
+          : `상세 이미지 ${urls.length}장을 업로드했습니다.`,
+      );
     } catch (error) {
       console.error('Failed to upload image:', error);
-      toast.error(error instanceof Error ? error.message : '이미지 업로드에 실패했습니다.');
+      const message =
+        error instanceof Error && isCloudinaryConfigError(error.message)
+          ? '이미지 업로드 환경이 아직 설정되지 않았습니다. 아래 URL 입력란에 직접 이미지 주소를 넣어 주세요.'
+          : error instanceof Error
+            ? error.message
+            : '이미지 업로드에 실패했습니다.';
+      toast.error(message);
     } finally {
       setUploading(null);
       event.target.value = '';
@@ -194,13 +206,28 @@ export function AdminProductsPage() {
     event.preventDefault();
 
     const pointPrice = Number(form.pointPrice);
-    const cashPrice = Number(form.cashPrice || '0');
+    const nextStockQuantity = Number(form.stockQuantity || '0');
 
-    if (!form.name.trim()) return toast.error('상품명을 입력해 주세요.');
-    if (!form.categoryId) return toast.error('카테고리를 선택해 주세요.');
-    if (!form.thumbnailUrl.trim()) return toast.error('대표 이미지를 등록해 주세요.');
-    if (!Number.isFinite(pointPrice) || pointPrice <= 0) return toast.error('포인트 금액을 확인해 주세요.');
-    if (!Number.isFinite(cashPrice) || cashPrice < 0) return toast.error('추가 결제 금액을 확인해 주세요.');
+    if (!form.name.trim()) {
+      toast.error('상품명을 입력해 주세요.');
+      return;
+    }
+    if (!form.categoryId) {
+      toast.error('카테고리를 선택해 주세요.');
+      return;
+    }
+    if (!form.thumbnailUrl.trim()) {
+      toast.error('대표 이미지를 등록해 주세요.');
+      return;
+    }
+    if (!Number.isFinite(pointPrice) || pointPrice <= 0) {
+      toast.error('필요 포인트를 확인해 주세요.');
+      return;
+    }
+    if (!Number.isFinite(nextStockQuantity) || nextStockQuantity < 0) {
+      toast.error('재고 수량을 확인해 주세요.');
+      return;
+    }
 
     const payload = {
       name: form.name.trim(),
@@ -208,22 +235,20 @@ export function AdminProductsPage() {
       thumbnailUrl: form.thumbnailUrl.trim(),
       imageUrls: form.detailImageUrls,
       pointPrice,
-      cashPrice,
-      badge: form.badge.trim() || null,
+      stockQuantity: nextStockQuantity,
       description: form.description.trim(),
       deliveryInfo: form.deliveryInfo.trim(),
       purchaseLimit: form.purchaseLimit.trim() ? Number(form.purchaseLimit) : null,
       status: form.status,
-      stockStatus: form.stockStatus,
     };
 
     setSaving(true);
     try {
       if (isEditMode && id) {
-        await adminApi.updateProduct(id, payload);
+        await adminApi.updateProduct(id, payload as any);
         toast.success('상품 정보를 수정했습니다.');
       } else {
-        await adminApi.createProduct(payload);
+        await adminApi.createProduct(payload as any);
         toast.success('상품을 등록했습니다.');
       }
       navigate('/admin/products');
@@ -270,7 +295,7 @@ export function AdminProductsPage() {
           <div>
             <h1>{isEditMode ? '상품 수정' : '상품 등록'}</h1>
             <p className="mt-1 text-muted-foreground">
-              {isEditMode ? '상품 가격과 상세 이미지를 함께 관리합니다.' : '복지몰에 노출할 상품을 등록합니다.'}
+              필요 포인트, 재고 수량, 상세 이미지를 중심으로 상품을 관리합니다.
             </p>
           </div>
           {productDetail ? (
@@ -284,7 +309,10 @@ export function AdminProductsPage() {
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_360px]">
-          <form onSubmit={handleSave} className="space-y-6 rounded-[var(--radius-card)] border border-border bg-card p-6">
+          <form
+            onSubmit={handleSave}
+            className="space-y-6 rounded-[var(--radius-card)] border border-border bg-card p-6"
+          >
             <div className="grid gap-4 md:grid-cols-2">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium">상품명</label>
@@ -324,7 +352,7 @@ export function AdminProductsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium">복지포인트 금액</label>
+                <label className="block text-sm font-medium">필요 포인트</label>
                 <input
                   type="number"
                   min="0"
@@ -332,17 +360,23 @@ export function AdminProductsPage() {
                   onChange={(event) => handleFormChange('pointPrice', event)}
                   className="mt-2 w-full rounded-[var(--radius)] border border-border bg-input-background px-4 py-3"
                 />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  보유 포인트가 부족하면 부족분만 현금 결제되도록 계산됩니다.
+                </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium">추가 결제 금액</label>
+                <label className="block text-sm font-medium">재고 수량</label>
                 <input
                   type="number"
                   min="0"
-                  value={form.cashPrice}
-                  onChange={(event) => handleFormChange('cashPrice', event)}
+                  value={form.stockQuantity}
+                  onChange={(event) => handleFormChange('stockQuantity', event)}
                   className="mt-2 w-full rounded-[var(--radius)] border border-border bg-input-background px-4 py-3"
                 />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  재고 10개 이하는 자동으로 `품절 임박`이 표시됩니다.
+                </p>
               </div>
 
               <div className="md:col-span-2">
@@ -351,26 +385,31 @@ export function AdminProductsPage() {
                   value={form.thumbnailUrl}
                   onChange={(event) => handleFormChange('thumbnailUrl', event)}
                   className="mt-2 w-full rounded-[var(--radius)] border border-border bg-input-background px-4 py-3 text-sm"
-                  placeholder="Cloudinary 업로드 후 URL이 자동 입력됩니다."
+                  placeholder="이미지 URL을 직접 입력하거나 아래 업로드 버튼을 사용해 주세요."
                 />
-                <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-[var(--radius-button)] border border-border px-4 py-2 text-sm hover:bg-[var(--surface-subtle)]">
-                  <ImagePlus className="size-4" strokeWidth={1.8} />
-                  {uploading === 'thumbnail' ? '업로드 중...' : '대표 이미지 업로드'}
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg"
-                    onChange={(event) => {
-                      void handleImageUpload(event, 'thumbnail');
-                    }}
-                    className="hidden"
-                  />
-                </label>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-[var(--radius-button)] border border-border px-4 py-2 text-sm hover:bg-[var(--surface-subtle)]">
+                    <ImagePlus className="size-4" strokeWidth={1.8} />
+                    {uploading === 'thumbnail' ? '업로드 중...' : '대표 이미지 업로드'}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      onChange={(event) => {
+                        void handleImageUpload(event, 'thumbnail');
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                  <span className="text-xs text-muted-foreground">
+                    Cloudinary가 미설정이면 URL 직접 입력 방식으로도 등록할 수 있습니다.
+                  </span>
+                </div>
               </div>
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium">상세 이미지</label>
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  {DETAIL_GUIDE}. 여러 장 업로드하면 상세 화면에 세로로 노출됩니다.
+                  {DETAIL_GUIDE}. 여러 장 업로드하면 상세 화면에 세로형으로 노출됩니다.
                 </p>
                 <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-[var(--radius-button)] border border-border px-4 py-2 text-sm hover:bg-[var(--surface-subtle)]">
                   <ImagePlus className="size-4" strokeWidth={1.8} />
@@ -388,8 +427,8 @@ export function AdminProductsPage() {
                 <textarea
                   value={form.detailImageUrls.join('\n')}
                   onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
+                    setForm((previous) => ({
+                      ...previous,
                       detailImageUrls: event.target.value
                         .split('\n')
                         .map((value) => value.trim())
@@ -405,36 +444,23 @@ export function AdminProductsPage() {
               <div>
                 <label className="block text-sm font-medium">배지</label>
                 <input
-                  value={form.badge}
-                  onChange={(event) => handleFormChange('badge', event)}
-                  className="mt-2 w-full rounded-[var(--radius)] border border-border bg-input-background px-4 py-3"
-                  placeholder="인기 / 추천 / 신규"
+                  value="정책 확정 전 비활성"
+                  readOnly
+                  className="mt-2 w-full rounded-[var(--radius)] border border-border bg-muted/20 px-4 py-3 text-foreground/50"
                 />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  배지 정책이 정해질 때까지 사용하지 않습니다.
+                </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium">상품 상태</label>
+                <label className="block text-sm font-medium">운영 상태</label>
                 <select
                   value={form.status}
                   onChange={(event) => handleFormChange('status', event)}
                   className="mt-2 w-full rounded-[var(--radius)] border border-border bg-input-background px-4 py-3"
                 >
                   {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium">재고 상태</label>
-                <select
-                  value={form.stockStatus}
-                  onChange={(event) => handleFormChange('stockStatus', event)}
-                  className="mt-2 w-full rounded-[var(--radius)] border border-border bg-input-background px-4 py-3"
-                >
-                  {Object.entries(STOCK_STATUS_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
                       {label}
                     </option>
@@ -497,26 +523,25 @@ export function AdminProductsPage() {
                 )}
               </div>
               <div className="space-y-3 p-5">
-                {form.badge ? (
-                  <span className="inline-flex rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-destructive-foreground">
-                    {form.badge}
-                  </span>
-                ) : null}
+                <div className="rounded-full bg-muted/20 px-3 py-1 text-xs font-semibold text-foreground/40">
+                  배지 비활성
+                </div>
                 <h3 className="text-base font-medium leading-7 text-foreground">
-                  {form.name || '상품명을 입력해 주세요'}
+                  {form.name || '상품명을 입력해 주세요.'}
                 </h3>
                 <div className="space-y-1">
                   <span className="block text-lg font-semibold text-primary">
                     {(Number(form.pointPrice) || 0).toLocaleString()}P
                   </span>
-                  {(Number(form.cashPrice) || 0) > 0 ? (
-                    <span className="block text-sm font-semibold text-foreground">
-                      + {(Number(form.cashPrice) || 0).toLocaleString()}원
-                    </span>
-                  ) : null}
+                  <span className="block text-sm text-muted-foreground">
+                    포인트 부족 시 부족분만 현금 결제 가능
+                  </span>
                 </div>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  {form.description || '상품 설명은 상세 상단 소개 영역에 함께 노출됩니다.'}
+                  {form.description || '상품 설명은 사용자 상세 화면 상단 소개 영역에 노출됩니다.'}
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  재고 {stockQuantity.toLocaleString()}개 / {getStockLabel(stockQuantity)}
                 </p>
               </div>
             </section>
@@ -530,21 +555,6 @@ export function AdminProductsPage() {
                 <div className="space-y-3">
                   {detailPreviewImages.map((imageUrl, index) => (
                     <div key={`${imageUrl}-${index}`} className="overflow-hidden rounded-[var(--radius)] border border-border">
-                      <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                        <span className="text-xs text-muted-foreground">상세 이미지 {index + 1}</span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setForm((prev) => ({
-                              ...prev,
-                              detailImageUrls: prev.detailImageUrls.filter((_, imageIndex) => imageIndex !== index),
-                            }))
-                          }
-                          className="rounded-full p-1 text-muted-foreground hover:bg-[var(--surface-subtle)] hover:text-destructive"
-                        >
-                          <Trash2 className="size-4" strokeWidth={1.8} />
-                        </button>
-                      </div>
                       <img src={imageUrl} alt={`상세 이미지 ${index + 1}`} className="h-auto w-full object-cover" />
                     </div>
                   ))}
@@ -562,7 +572,9 @@ export function AdminProductsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1>상품 관리</h1>
-          <p className="mt-1 text-muted-foreground">가격 구조와 운영 상태를 한눈에 관리하세요.</p>
+          <p className="mt-1 text-muted-foreground">
+            필요 포인트와 재고 수량 중심으로 상품을 운영합니다.
+          </p>
         </div>
         <Link
           to="/admin/products/new"
@@ -582,7 +594,10 @@ export function AdminProductsPage() {
           className="flex gap-3"
         >
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" strokeWidth={1.5} />
+            <Search
+              className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
+              strokeWidth={1.5}
+            />
             <input
               type="text"
               value={searchQuery}
@@ -624,77 +639,84 @@ export function AdminProductsPage() {
             <table className="w-full">
               <thead className="border-b border-border bg-[var(--surface-subtle)]">
                 <tr>
-                  {['상품', '포인트 / 추가금', '재고 상태', '운영 상태', '작업'].map((header) => (
-                    <th key={header} className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  {['상품', '필요 포인트', '재고 수량', '재고 상태', '운영 상태', '작업'].map((header) => (
+                    <th
+                      key={header}
+                      className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground"
+                    >
                       {header}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {products.map((product) => (
-                  <tr key={product.productId} className="hover:bg-muted/10">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <img src={product.thumbnailUrl} alt={product.name} className="size-12 rounded-[var(--radius-sm)] object-cover" />
-                        <div>
-                          <p className="font-medium text-foreground">{product.name}</p>
-                          <p className="text-sm text-muted-foreground">ID: {product.productId}</p>
+                {products.map((product) => {
+                  const nextStockQuantity = product.stockQuantity ?? 0;
+
+                  return (
+                    <tr key={product.productId} className="hover:bg-muted/10">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={product.thumbnailUrl}
+                            alt={product.name}
+                            className="size-12 rounded-[var(--radius-sm)] object-cover"
+                          />
+                          <div>
+                            <p className="font-medium text-foreground">{product.name}</p>
+                            <p className="text-sm text-muted-foreground">ID: {product.productId}</p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-medium">
-                      <div>{product.pointPrice.toLocaleString()}P</div>
-                      {product.cashPrice > 0 ? (
-                        <div className="mt-1 text-sm text-muted-foreground">+ {product.cashPrice.toLocaleString()}원</div>
-                      ) : null}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="rounded-full bg-muted/20 px-2.5 py-1 text-xs font-semibold">
-                        {STOCK_STATUS_LABELS[product.stockStatus]}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="rounded-full bg-muted/20 px-2.5 py-1 text-xs font-semibold">
-                        {STATUS_LABELS[product.status]}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          to={`/admin/products/${product.productId}`}
-                          className="rounded-full p-2 text-muted-foreground hover:bg-[var(--surface-subtle)] hover:text-primary"
-                          title="상품 수정"
-                        >
-                          <Pencil className="size-4" strokeWidth={1.5} />
-                        </Link>
-                        {product.status === 'active' ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void handleStatusChange(product.productId, 'inactive');
-                            }}
-                            className="rounded-full p-2 text-muted-foreground hover:bg-[var(--surface-subtle)] hover:text-destructive"
-                            title="운영 중지"
+                      </td>
+                      <td className="px-6 py-4 font-medium">{product.pointPrice.toLocaleString()}P</td>
+                      <td className="px-6 py-4 font-medium">{nextStockQuantity.toLocaleString()}개</td>
+                      <td className="px-6 py-4">
+                        <span className="rounded-full bg-muted/20 px-2.5 py-1 text-xs font-semibold">
+                          {getStockLabel(nextStockQuantity)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="rounded-full bg-muted/20 px-2.5 py-1 text-xs font-semibold">
+                          {STATUS_LABELS[product.status]}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/admin/products/${product.productId}`}
+                            className="rounded-full p-2 text-muted-foreground hover:bg-[var(--surface-subtle)] hover:text-primary"
+                            title="상품 수정"
                           >
-                            <EyeOff className="size-4" strokeWidth={1.5} />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void handleStatusChange(product.productId, 'active');
-                            }}
-                            className="rounded-full p-2 text-muted-foreground hover:bg-[var(--surface-subtle)] hover:text-success"
-                            title="운영 시작"
-                          >
-                            <Eye className="size-4" strokeWidth={1.5} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                            <Pencil className="size-4" strokeWidth={1.5} />
+                          </Link>
+                          {product.status === 'active' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleStatusChange(product.productId, 'inactive');
+                              }}
+                              className="rounded-full p-2 text-muted-foreground hover:bg-[var(--surface-subtle)] hover:text-destructive"
+                              title="운영 중지"
+                            >
+                              <EyeOff className="size-4" strokeWidth={1.5} />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleStatusChange(product.productId, 'active');
+                              }}
+                              className="rounded-full p-2 text-muted-foreground hover:bg-[var(--surface-subtle)] hover:text-primary"
+                              title="운영 시작"
+                            >
+                              <Eye className="size-4" strokeWidth={1.5} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

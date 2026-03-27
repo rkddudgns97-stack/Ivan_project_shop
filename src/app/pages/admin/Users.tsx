@@ -29,6 +29,7 @@ export function AdminUsersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof FILTER_OPTIONS)[number]['value']>('inactive');
   const [showGrantModal, setShowGrantModal] = useState(false);
+  const [grantAmount, setGrantAmount] = useState('300000');
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
   const loadUsers = async () => {
@@ -57,10 +58,17 @@ export function AdminUsersPage() {
   };
 
   const handleBulkGrant = async () => {
+    const amount = Number(grantAmount.replaceAll(',', ''));
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('지급 포인트를 올바르게 입력해 주세요.');
+      return;
+    }
+
     try {
       await adminApi.grantPoints({
         batchKey: `2026-annual-grant-${Date.now()}`,
-        amount: 300000,
+        amount,
         targetStatus: 'active',
         expiresAt: '2026-12-31T14:59:59Z',
         description: '2026 연간 복지 포인트 지급',
@@ -71,7 +79,7 @@ export function AdminUsersPage() {
       await loadUsers();
     } catch (error) {
       console.error('Failed to grant points:', error);
-      toast.error('포인트 지급에 실패했습니다.');
+      toast.error('포인트 일괄 지급에 실패했습니다.');
     }
   };
 
@@ -102,13 +110,15 @@ export function AdminUsersPage() {
     );
   }, [users]);
 
+  const formattedGrantAmount = Number(grantAmount.replaceAll(',', '') || 0).toLocaleString();
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1>회원 관리</h1>
           <p className="mt-1 text-muted-foreground">
-            가입 신청, 승인 상태, 포인트 지급 대상을 한 번에 관리합니다.
+            가입 신청 승인, 계정 상태 변경, 포인트 지급을 한 화면에서 관리합니다.
           </p>
         </div>
         <button
@@ -149,7 +159,7 @@ export function AdminUsersPage() {
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="이름, 사번, 이메일 검색"
+              placeholder="이름, 사번, 이메일로 검색"
               className="w-full rounded-[var(--radius)] border border-border bg-input-background py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -222,7 +232,9 @@ export function AdminUsersPage() {
                     <td className="px-6 py-4 font-medium text-foreground">{user.name}</td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">{user.email}</td>
                     <td className="px-6 py-4">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_COLORS[user.status]}`}>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_COLORS[user.status]}`}
+                      >
                         {STATUS_LABELS[user.status]}
                       </span>
                     </td>
@@ -278,7 +290,7 @@ export function AdminUsersPage() {
                             className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <CheckCheck className="size-3.5" />
-                            재승인
+                            재활성
                           </button>
                         ) : null}
                       </div>
@@ -296,23 +308,48 @@ export function AdminUsersPage() {
           <div className="w-full max-w-md rounded-[var(--radius-card)] bg-card p-6">
             <h2>포인트 일괄 지급</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              승인 완료된 임직원 전체에게 300,000P를 일괄 지급합니다.
+              승인 완료된 임직원 전체에게 원하는 포인트를 한 번에 지급합니다.
             </p>
 
-            <div className="mt-5 space-y-3">
-              {[
-                { label: '지급 대상', value: '승인 완료 임직원 전체' },
-                { label: '지급 포인트', value: '300,000P' },
-                { label: '만료일', value: '2026-12-31' },
-                { label: '지급 사유', value: '2026 연간 복지 포인트 지급' },
-              ].map((item) => (
-                <div key={item.label}>
-                  <p className="text-sm text-muted-foreground">{item.label}</p>
-                  <p className="mt-1 rounded-[var(--radius)] bg-background px-4 py-3 text-sm text-foreground">
-                    {item.value}
-                  </p>
-                </div>
-              ))}
+            <div className="mt-5 space-y-4">
+              <div>
+                <p className="text-sm text-muted-foreground">지급 대상</p>
+                <p className="mt-1 rounded-[var(--radius)] bg-background px-4 py-3 text-sm text-foreground">
+                  승인 완료 임직원 전체
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="grantAmount" className="text-sm text-muted-foreground">
+                  지급 포인트
+                </label>
+                <input
+                  id="grantAmount"
+                  type="number"
+                  min="1"
+                  value={grantAmount}
+                  onChange={(event) => setGrantAmount(event.target.value)}
+                  className="mt-1 w-full rounded-[var(--radius)] border border-border bg-input-background px-4 py-3 text-sm text-foreground"
+                />
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground">만료일</p>
+                <p className="mt-1 rounded-[var(--radius)] bg-background px-4 py-3 text-sm text-foreground">
+                  2026-12-31
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground">지급 사유</p>
+                <p className="mt-1 rounded-[var(--radius)] bg-background px-4 py-3 text-sm text-foreground">
+                  2026 연간 복지 포인트 지급
+                </p>
+              </div>
+
+              <div className="rounded-[var(--radius)] bg-[var(--surface-subtle)] px-4 py-3 text-sm text-muted-foreground">
+                승인 완료 회원에게 {formattedGrantAmount}P가 일괄 지급됩니다.
+              </div>
             </div>
 
             <div className="mt-6 flex justify-end gap-3">

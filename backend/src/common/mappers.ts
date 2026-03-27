@@ -73,12 +73,17 @@ export function mapCategory(category: any) {
 }
 
 export function mapProduct(product: any) {
+  const stockQuantity = Array.isArray(product.variants)
+    ? product.variants.reduce((sum: number, variant: any) => sum + (variant.stock ?? 0), 0)
+    : undefined;
+
   return {
     productId: product.id,
     name: product.name,
     thumbnailUrl: product.thumbnailUrl,
     pointPrice: product.pointPrice,
     cashPrice: product.cashPrice ?? 0,
+    stockQuantity,
     status: toClientEnum(product.status),
     stockStatus: toClientEnum(product.stockStatus),
     badge: product.badge ?? undefined,
