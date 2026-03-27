@@ -46,6 +46,9 @@ export type PaymentMethod = 'point_only' | 'card' | 'kakao_pay' | 'naver_pay' | 
 export type PaymentStatus = 'pending' | 'ready' | 'paid' | 'cancelled' | 'refunded';
 
 export interface PaymentSummary {
+  requiredPointAmount?: number;
+  availablePointAmount?: number;
+  shortfallCashAmount?: number;
   itemPointAmount: number;
   itemCashAmount: number;
   shippingFeeCashAmount: number;

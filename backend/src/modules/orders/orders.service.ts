@@ -22,18 +22,16 @@ export class OrdersService {
         (sum, item) => sum + item.pointPriceSnapshot * item.quantity,
         0,
       );
-      const calculatedCashAmount = cart.items.reduce(
-        (sum, item) => sum + (item.cashPriceSnapshot ?? 0) * item.quantity,
-        0,
-      );
-      const totalCashAmount = Math.max(0, Number(payload.cashAmount ?? calculatedCashAmount));
+      const usedPointAmount = Math.min(wallet.availablePoint, totalPointAmount);
+      const requiredCashAmount = Math.max(0, totalPointAmount - usedPointAmount);
+      const totalCashAmount = Math.max(0, Number(payload.cashAmount ?? requiredCashAmount));
 
       const order = await tx.order.create({
         data: {
           orderNo: `${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 1000)}`,
           userId,
           status: OrderStatus.PAID,
-          usedPoint: totalPointAmount,
+          usedPoint: usedPointAmount,
           additionalCashAmount: totalCashAmount,
           paymentMethod: (payload.paymentMethod ?? (totalCashAmount > 0 ? 'CARD' : 'POINT_ONLY')).toUpperCase(),
           paymentStatus: totalCashAmount > 0 ? 'READY' : 'PAID',
@@ -47,7 +45,7 @@ export class OrdersService {
               variantName: item.variantNameSnapshot,
               quantity: item.quantity,
               pointPrice: item.pointPriceSnapshot,
-              cashPrice: item.cashPriceSnapshot ?? 0,
+              cashPrice: 0,
             })),
           },
           statuses: {
@@ -63,24 +61,26 @@ export class OrdersService {
       await tx.pointWallet.update({
         where: { userId },
         data: {
-          availablePoint: wallet.availablePoint - totalPointAmount,
+          availablePoint: wallet.availablePoint - usedPointAmount,
           reservedPoint: 0,
         },
       });
 
-      await tx.pointLedger.create({
-        data: {
-          userId,
-          type: PointLedgerType.USE,
-          amount: -totalPointAmount,
-          balanceAfter: wallet.availablePoint - totalPointAmount,
-          relatedOrderId: order.id,
-          description:
-            totalCashAmount > 0
-              ? `Order checkout (point ${totalPointAmount}, cash ${totalCashAmount})`
-              : 'Order checkout',
-        },
-      });
+      if (usedPointAmount > 0) {
+        await tx.pointLedger.create({
+          data: {
+            userId,
+            type: PointLedgerType.USE,
+            amount: -usedPointAmount,
+            balanceAfter: wallet.availablePoint - usedPointAmount,
+            relatedOrderId: order.id,
+            description:
+              totalCashAmount > 0
+                ? `Order checkout (point ${usedPointAmount}, cash ${totalCashAmount})`
+                : 'Order checkout',
+          },
+        });
+      }
 
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
 
@@ -90,11 +90,14 @@ export class OrdersService {
         paymentStatus: totalCashAmount > 0 ? 'ready' : 'paid',
         additionalCashAmount: totalCashAmount,
         paymentSummary: {
+          requiredPointAmount: totalPointAmount,
+          availablePointAmount: wallet.availablePoint,
+          shortfallCashAmount: totalCashAmount,
           itemPointAmount: totalPointAmount,
           itemCashAmount: totalCashAmount,
           shippingFeeCashAmount: 0,
           discountCashAmount: 0,
-          finalPointAmount: totalPointAmount,
+          finalPointAmount: usedPointAmount,
           finalCashAmount: totalCashAmount,
         },
       };

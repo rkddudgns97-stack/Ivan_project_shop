@@ -49,6 +49,9 @@ export class AuthService {
             expiringPoint: 0,
           },
         },
+        cart: {
+          create: {},
+        },
       },
       include: {
         roles: true,

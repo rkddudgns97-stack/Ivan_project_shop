@@ -8,7 +8,10 @@ export class CartService {
 
   async getCart(userId: string) {
     const cart = await this.ensureCart(userId);
-    return mapCart(cart);
+    const wallet = await this.prisma.pointWallet.findUnique({
+      where: { userId },
+    });
+    return mapCart(cart, wallet?.availablePoint ?? 0);
   }
 
   async addItem(userId: string, productId: string, variantId?: string, quantity = 1) {
@@ -25,7 +28,7 @@ export class CartService {
         variantId: variantId ?? null,
         quantity,
         pointPriceSnapshot: variant?.pointPrice ?? product.pointPrice,
-        cashPriceSnapshot: variant?.cashPrice ?? product.cashPrice ?? 0,
+        cashPriceSnapshot: 0,
         productNameSnapshot: product.name,
         thumbnailUrlSnapshot: product.thumbnailUrl,
         variantNameSnapshot: variant?.name ?? null,

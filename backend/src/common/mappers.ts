@@ -103,7 +103,7 @@ export function mapProductDetail(product: any) {
   };
 }
 
-export function mapCart(cart: any) {
+export function mapCart(cart: any, availablePoint = 0) {
   const items = (cart.items ?? []).map((item: any) => ({
     cartItemId: item.id,
     productId: item.productId,
@@ -113,23 +113,27 @@ export function mapCart(cart: any) {
     variantName: item.variantNameSnapshot ?? undefined,
     quantity: item.quantity,
     pointPrice: item.pointPriceSnapshot,
-    cashPrice: item.cashPriceSnapshot ?? 0,
+    cashPrice: 0,
   }));
   const totalPointAmount = items.reduce((sum: number, item: any) => sum + item.pointPrice * item.quantity, 0);
-  const totalCashAmount = items.reduce((sum: number, item: any) => sum + item.cashPrice * item.quantity, 0);
+  const usablePointAmount = Math.min(availablePoint, totalPointAmount);
+  const shortfallCashAmount = Math.max(0, totalPointAmount - usablePointAmount);
 
   return {
     cartId: cart.id,
     items,
     totalPointAmount,
-    totalCashAmount,
+    totalCashAmount: shortfallCashAmount,
     paymentSummary: {
+      requiredPointAmount: totalPointAmount,
+      availablePointAmount: availablePoint,
+      shortfallCashAmount,
       itemPointAmount: totalPointAmount,
-      itemCashAmount: totalCashAmount,
+      itemCashAmount: shortfallCashAmount,
       shippingFeeCashAmount: 0,
       discountCashAmount: 0,
-      finalPointAmount: totalPointAmount,
-      finalCashAmount: totalCashAmount,
+      finalPointAmount: usablePointAmount,
+      finalCashAmount: shortfallCashAmount,
     },
   };
 }
@@ -146,10 +150,10 @@ export function mapOrder(order: any) {
     cashPrice: item.cashPrice ?? 0,
   }));
   const itemPointAmount = items.reduce((sum: number, item: any) => sum + item.pointPrice * item.quantity, 0);
-  const itemCashAmount = items.reduce((sum: number, item: any) => sum + item.cashPrice * item.quantity, 0);
   const shippingFeeCashAmount = order.shippingFeeCashAmount ?? 0;
   const discountCashAmount = order.discountCashAmount ?? 0;
-  const finalCashAmount = Math.max(0, itemCashAmount + shippingFeeCashAmount - discountCashAmount);
+  const finalCashAmount = Math.max(0, (order.additionalCashAmount ?? 0) + shippingFeeCashAmount - discountCashAmount);
+  const requiredPointAmount = order.requiredPointAmount ?? order.usedPoint + finalCashAmount;
 
   return {
     orderId: order.id,
@@ -161,8 +165,11 @@ export function mapOrder(order: any) {
     paymentMethod: toClientEnum(order.paymentMethod ?? 'POINT_ONLY'),
     paymentStatus: toClientEnum(order.paymentStatus ?? 'PAID'),
     paymentSummary: {
-      itemPointAmount,
-      itemCashAmount,
+      requiredPointAmount,
+      availablePointAmount: undefined,
+      shortfallCashAmount: order.additionalCashAmount ?? finalCashAmount,
+      itemPointAmount: requiredPointAmount,
+      itemCashAmount: order.additionalCashAmount ?? finalCashAmount,
       shippingFeeCashAmount,
       discountCashAmount,
       finalPointAmount: order.usedPoint,

@@ -18,7 +18,7 @@ const STATUS_LABELS: Record<Order['status'], string> = {
 };
 
 const PAYMENT_METHOD_LABELS: Record<Order['paymentMethod'], string> = {
-  point_only: '포인트 전용',
+  point_only: '포인트만 사용',
   card: '카드 결제',
   kakao_pay: '카카오페이',
   naver_pay: '네이버페이',
@@ -65,8 +65,9 @@ export function OrderDetailPage() {
   }, [id, isAdminView]);
 
   const handleCancelRequest = async () => {
-    if (!order) return;
-    if (!window.confirm('이 주문을 취소 요청하시겠습니까?')) return;
+    if (!order || !window.confirm('이 주문의 취소를 요청하시겠습니까?')) {
+      return;
+    }
 
     setProcessing(true);
     try {
@@ -82,8 +83,9 @@ export function OrderDetailPage() {
   };
 
   const handleReturnRequest = async () => {
-    if (!order) return;
-    if (!window.confirm('이 주문을 반품 요청하시겠습니까?')) return;
+    if (!order || !window.confirm('이 주문의 반품을 요청하시겠습니까?')) {
+      return;
+    }
 
     setProcessing(true);
     try {
@@ -123,6 +125,10 @@ export function OrderDetailPage() {
       </div>
     );
   }
+
+  const payment = order.paymentSummary;
+  const requiredPointAmount = payment.requiredPointAmount ?? payment.itemPointAmount;
+  const shortfallCashAmount = payment.shortfallCashAmount ?? payment.finalCashAmount;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -167,7 +173,7 @@ export function OrderDetailPage() {
             </div>
             {order.shipment.shippedAt ? (
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">발송 시각</span>
+                <span className="text-muted-foreground">출고 시각</span>
                 <span>{new Date(order.shipment.shippedAt).toLocaleString('ko-KR')}</span>
               </div>
             ) : null}
@@ -182,68 +188,59 @@ export function OrderDetailPage() {
         </div>
 
         <div className="space-y-4">
-          {order.items.map((item) => {
-            const itemPointTotal = item.pointPrice * item.quantity;
-            const itemCashTotal = item.cashPrice * item.quantity;
-
-            return (
-              <div
-                key={item.orderItemId}
-                className="flex gap-4 border-b border-border pb-4 last:border-0 last:pb-0"
-              >
-                <img
-                  src={item.thumbnailUrl}
-                  alt={item.productName}
-                  className="size-20 rounded-[var(--radius-sm)] object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-foreground">{item.productName}</p>
-                  {item.variantName ? (
-                    <p className="mt-1 text-sm text-muted-foreground">{item.variantName}</p>
-                  ) : null}
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {item.pointPrice.toLocaleString()}P x {item.quantity}
-                  </p>
-                  {itemCashTotal > 0 ? (
-                    <p className="mt-1 text-sm font-medium text-foreground">
-                      추가 결제 {itemCashTotal.toLocaleString()}원
-                    </p>
-                  ) : null}
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold text-primary">{itemPointTotal.toLocaleString()}P</p>
-                  {itemCashTotal > 0 ? (
-                    <p className="mt-1 text-sm font-medium text-foreground">
-                      + {itemCashTotal.toLocaleString()}원
-                    </p>
-                  ) : null}
-                </div>
+          {order.items.map((item) => (
+            <div
+              key={item.orderItemId}
+              className="flex gap-4 border-b border-border pb-4 last:border-0 last:pb-0"
+            >
+              <img
+                src={item.thumbnailUrl}
+                alt={item.productName}
+                className="size-20 rounded-[var(--radius-sm)] object-cover"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-foreground">{item.productName}</p>
+                {item.variantName ? (
+                  <p className="mt-1 text-sm text-muted-foreground">{item.variantName}</p>
+                ) : null}
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {item.pointPrice.toLocaleString()}P x {item.quantity}
+                </p>
               </div>
-            );
-          })}
+              <div className="text-right">
+                <p className="font-semibold text-primary">
+                  {(item.pointPrice * item.quantity).toLocaleString()}P
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
 
         <div className="mt-6 space-y-3 border-t border-border pt-4">
           <div className="flex items-center justify-between">
-            <span className="font-semibold text-foreground">총 결제 포인트</span>
-            <span className="text-xl font-semibold text-primary">
-              {order.paymentSummary.finalPointAmount.toLocaleString()}P
+            <span className="text-muted-foreground">총 필요 포인트</span>
+            <span className="font-semibold text-foreground">{requiredPointAmount.toLocaleString()}P</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">실제 사용 포인트</span>
+            <span className="text-lg font-semibold text-primary">
+              {payment.finalPointAmount.toLocaleString()}P
             </span>
           </div>
-          {order.paymentSummary.finalCashAmount > 0 ? (
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">부족분 현금 결제</span>
+            <span className="font-semibold text-foreground">
+              {shortfallCashAmount.toLocaleString()}원
+            </span>
+          </div>
+          {shortfallCashAmount > 0 ? (
             <>
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-foreground">총 추가 결제 금액</span>
-                <span className="text-lg font-semibold text-foreground">
-                  {order.paymentSummary.finalCashAmount.toLocaleString()}원
-                </span>
-              </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">결제수단</span>
+                <span className="text-muted-foreground">결제 수단</span>
                 <span>{PAYMENT_METHOD_LABELS[order.paymentMethod]}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">결제상태</span>
+                <span className="text-muted-foreground">결제 상태</span>
                 <span>{PAYMENT_STATUS_LABELS[order.paymentStatus]}</span>
               </div>
             </>

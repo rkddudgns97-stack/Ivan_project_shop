@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, BoxIcon, ShoppingBag, Truck } from 'lucide-react';
 import { toast } from 'sonner';
-import { cartApi, productApi } from '../api';
-import type { ProductDetail } from '../types';
+import { cartApi, pointApi, productApi } from '../api';
+import type { PointBalance, ProductDetail } from '../types';
 
 const STOCK_STATUS_LABELS = {
   in_stock: '구매 가능',
@@ -16,6 +16,7 @@ export function ProductDetailPage() {
   const navigate = useNavigate();
 
   const [product, setProduct] = useState<ProductDetail | null>(null);
+  const [pointBalance, setPointBalance] = useState<PointBalance | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState('');
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -28,11 +29,16 @@ export function ProductDetailPage() {
 
       setLoading(true);
       try {
-        const response = await productApi.getDetail(id);
-        setProduct(response.data);
+        const [productResponse, balanceResponse] = await Promise.all([
+          productApi.getDetail(id),
+          pointApi.getBalance(),
+        ]);
 
-        if (response.data.variants?.length) {
-          setSelectedVariantId(response.data.variants[0].variantId);
+        setProduct(productResponse.data);
+        setPointBalance(balanceResponse.data);
+
+        if (productResponse.data.variants?.length) {
+          setSelectedVariantId(productResponse.data.variants[0].variantId);
         }
       } catch (error) {
         console.error('Failed to load product:', error);
@@ -52,16 +58,17 @@ export function ProductDetailPage() {
 
   const imageUrls = product?.images?.length ? product.images : product ? [product.thumbnailUrl] : [];
   const currentImageUrl = imageUrls[selectedImageIndex] ?? imageUrls[0];
-  const currentPointPrice = selectedVariant?.pointPrice ?? product?.pointPrice ?? 0;
-  const currentCashPrice = selectedVariant?.cashPrice ?? product?.cashPrice ?? 0;
+  const pointPrice = selectedVariant?.pointPrice ?? product?.pointPrice ?? 0;
   const isOutOfStock =
     product?.stockStatus === 'out_of_stock' || (!!selectedVariant && selectedVariant.stock <= 0);
   const maxQuantity = Math.max(
     1,
     Math.min(product?.purchaseLimit ?? 99, selectedVariant?.stock ?? product?.purchaseLimit ?? 99),
   );
-  const totalPointPrice = currentPointPrice * quantity;
-  const totalCashPrice = currentCashPrice * quantity;
+  const requiredPointTotal = pointPrice * quantity;
+  const availablePoint = pointBalance?.availablePoint ?? 0;
+  const usablePoint = Math.min(availablePoint, requiredPointTotal);
+  const shortfallCash = Math.max(0, requiredPointTotal - usablePoint);
 
   const updateQuantity = (nextQuantity: number) => {
     setQuantity(Math.max(1, Math.min(maxQuantity, nextQuantity)));
@@ -101,7 +108,7 @@ export function ProductDetailPage() {
       <div className="flex min-h-[400px] items-center justify-center">
         <div className="text-center">
           <div className="inline-block size-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent" />
-          <p className="mt-4 text-muted-foreground">상품 정보를 불러오고 있습니다.</p>
+          <p className="mt-4 text-muted-foreground">상품 정보를 불러오는 중입니다.</p>
         </div>
       </div>
     );
@@ -174,19 +181,17 @@ export function ProductDetailPage() {
 
           <div className="space-y-3 border-y border-border py-5">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">복지포인트</p>
+              <p className="text-sm font-medium text-muted-foreground">상품 필요 포인트</p>
               <p className="text-3xl font-semibold tracking-tight text-primary">
-                {currentPointPrice.toLocaleString()}P
+                {pointPrice.toLocaleString()}P
               </p>
             </div>
-            {currentCashPrice > 0 ? (
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">추가 결제 금액</p>
-                <p className="text-xl font-semibold tracking-tight text-foreground">
-                  {currentCashPrice.toLocaleString()}원
-                </p>
-              </div>
-            ) : null}
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">내 보유 포인트</p>
+              <p className="text-xl font-semibold tracking-tight text-foreground">
+                {availablePoint.toLocaleString()}P
+              </p>
+            </div>
             {product.stockStatus === 'low_stock' ? (
               <p className="text-sm font-medium text-warning">재고가 얼마 남지 않았습니다.</p>
             ) : null}
@@ -203,7 +208,6 @@ export function ProductDetailPage() {
                 {product.variants.map((variant) => (
                   <option key={variant.variantId} value={variant.variantId}>
                     {variant.name} / {variant.pointPrice.toLocaleString()}P
-                    {variant.cashPrice > 0 ? ` + ${variant.cashPrice.toLocaleString()}원` : ''}
                     {variant.stock <= 0 ? ' / 품절' : ''}
                   </option>
                 ))}
@@ -239,15 +243,23 @@ export function ProductDetailPage() {
 
           <div className="rounded-[var(--radius)] bg-background p-4">
             <div className="flex items-center justify-between">
-              <span className="font-medium text-foreground">총 결제 포인트</span>
-              <span className="text-xl font-semibold text-primary">{totalPointPrice.toLocaleString()}P</span>
+              <span className="font-medium text-foreground">총 필요 포인트</span>
+              <span className="text-xl font-semibold text-primary">
+                {requiredPointTotal.toLocaleString()}P
+              </span>
             </div>
-            {totalCashPrice > 0 ? (
-              <div className="mt-3 flex items-center justify-between">
-                <span className="font-medium text-foreground">총 추가 결제 금액</span>
-                <span className="text-lg font-semibold text-foreground">{totalCashPrice.toLocaleString()}원</span>
-              </div>
-            ) : null}
+            <div className="mt-3 flex items-center justify-between">
+              <span className="font-medium text-foreground">포인트 사용 예정</span>
+              <span className="text-lg font-semibold text-foreground">
+                {usablePoint.toLocaleString()}P
+              </span>
+            </div>
+            <div className="mt-3 flex items-center justify-between">
+              <span className="font-medium text-foreground">부족분 현금 결제</span>
+              <span className="text-lg font-semibold text-foreground">
+                {shortfallCash.toLocaleString()}원
+              </span>
+            </div>
           </div>
 
           <div className="flex gap-3">
@@ -289,16 +301,18 @@ export function ProductDetailPage() {
               <div>
                 <p className="font-medium text-foreground">재고 상태</p>
                 <p className="mt-1 text-muted-foreground">
-                  {STOCK_STATUS_LABELS[selectedVariant && selectedVariant.stock <= 0 ? 'out_of_stock' : product.stockStatus]}
+                  {
+                    STOCK_STATUS_LABELS[
+                      selectedVariant && selectedVariant.stock <= 0 ? 'out_of_stock' : product.stockStatus
+                    ]
+                  }
                 </p>
               </div>
             </div>
-            {currentCashPrice > 0 ? (
-              <div className="rounded-[var(--radius-sm)] bg-[var(--surface-subtle)] p-4 text-muted-foreground">
-                이 상품은 복지포인트와 추가 결제가 함께 필요한 상품입니다. 실제 결제수단 선택 화면은
-                마지막 단계에서 연동할 예정이며, 현재는 추가금 구조만 먼저 반영되어 있습니다.
-              </div>
-            ) : null}
+            <div className="rounded-[var(--radius-sm)] bg-[var(--surface-subtle)] p-4 text-muted-foreground">
+              포인트가 부족해도 주문할 수 있습니다. 보유 포인트를 먼저 사용하고, 남는 부족분만
+              현금으로 결제합니다.
+            </div>
           </div>
         </div>
       </div>
@@ -307,7 +321,7 @@ export function ProductDetailPage() {
         <div className="flex flex-col gap-2 border-b border-border pb-4">
           <h2 className="text-xl font-semibold text-foreground">상세 안내</h2>
           <p className="text-sm text-muted-foreground">
-            상품 상세는 모바일 커머스 레퍼런스에 맞춰 세로형 이미지 중심으로 제공합니다.
+            상품 상세는 세로형 이미지로 제공됩니다.
           </p>
         </div>
 

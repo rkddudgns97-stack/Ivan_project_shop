@@ -19,7 +19,8 @@ const TEXT = {
   emptyUser: '\uC8FC\uBB38 \uB0B4\uC5ED\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.',
   goProducts: '\uC0C1\uD488 \uBCF4\uB7EC \uAC00\uAE30',
   orderNo: '\uC8FC\uBB38\uBC88\uD638',
-  totalPoint: '\uCD1D \uACB0\uC81C \uD3EC\uC778\uD2B8',
+  usedPoint: '\uC2E4\uC81C \uC0AC\uC6A9 \uD3EC\uC778\uD2B8',
+  shortfallCash: '\uBD80\uC871\uBD84 \uD604\uAE08 \uACB0\uC81C',
   created: '\uC8FC\uBB38 \uC0DD\uC131',
   preparing: '\uBC30\uC1A1 \uC900\uBE44 \uC911',
   cancelled: '\uCDE8\uC18C \uC644\uB8CC',
@@ -182,8 +183,14 @@ export function OrdersPage() {
 
               <div className="mt-5 border-t border-border pt-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">{TEXT.totalPoint}</span>
+                  <span className="text-sm text-muted-foreground">{TEXT.usedPoint}</span>
                   <span className="text-lg font-semibold text-primary">{order.usedPoint.toLocaleString()}P</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">{TEXT.shortfallCash}</span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {(order.paymentSummary.shortfallCashAmount ?? order.additionalCashAmount).toLocaleString()}원
+                  </span>
                 </div>
                 {order.shipment ? (
                   <p className="mt-3 rounded-[var(--radius-sm)] bg-background px-3 py-2 text-sm text-muted-foreground">

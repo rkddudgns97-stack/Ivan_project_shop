@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CheckCheck, Coins, Search, UserCheck, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminApi } from '../../api';
@@ -17,17 +17,17 @@ const STATUS_COLORS: Record<User['status'], string> = {
 };
 
 const FILTER_OPTIONS = [
+  { value: 'inactive', label: '승인 대기' },
   { value: 'all', label: '전체' },
   { value: 'active', label: '승인 완료' },
-  { value: 'inactive', label: '승인 대기' },
   { value: 'leave', label: '이용 중지' },
-];
+] as const;
 
 export function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<(typeof FILTER_OPTIONS)[number]['value']>('inactive');
   const [showGrantModal, setShowGrantModal] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
@@ -41,7 +41,7 @@ export function AdminUsersPage() {
       setUsers(response.data.items);
     } catch (error) {
       console.error('Failed to load users:', error);
-      toast.error('사용자 목록을 불러오지 못했습니다.');
+      toast.error('회원 목록을 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
@@ -66,7 +66,7 @@ export function AdminUsersPage() {
         description: '2026 연간 복지 포인트 지급',
       });
 
-      toast.success('포인트 일괄 지급이 완료되었습니다.');
+      toast.success('포인트 일괄 지급을 완료했습니다.');
       setShowGrantModal(false);
       await loadUsers();
     } catch (error) {
@@ -79,22 +79,37 @@ export function AdminUsersPage() {
     setUpdatingUserId(userId);
     try {
       await adminApi.updateUserStatus(userId, status);
-      toast.success(status === 'active' ? '사용자 승인이 완료되었습니다.' : '사용자 상태를 변경했습니다.');
+      toast.success(
+        status === 'active' ? '가입 신청을 승인했습니다.' : '회원 상태를 변경했습니다.',
+      );
       await loadUsers();
     } catch (error) {
       console.error('Failed to update user status:', error);
-      toast.error(error instanceof Error ? error.message : '사용자 상태 변경에 실패했습니다.');
+      toast.error(error instanceof Error ? error.message : '회원 상태 변경에 실패했습니다.');
     } finally {
       setUpdatingUserId(null);
     }
   };
 
+  const summary = useMemo(() => {
+    return users.reduce(
+      (result, user) => {
+        result.total += 1;
+        result[user.status] += 1;
+        return result;
+      },
+      { total: 0, active: 0, inactive: 0, leave: 0 },
+    );
+  }, [users]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1>사용자 관리</h1>
-          <p className="mt-1 text-muted-foreground">가입 승인, 계정 상태, 포인트 지급 대상을 관리합니다.</p>
+          <h1>회원 관리</h1>
+          <p className="mt-1 text-muted-foreground">
+            가입 신청, 승인 상태, 포인트 지급 대상을 한 번에 관리합니다.
+          </p>
         </div>
         <button
           type="button"
@@ -106,15 +121,35 @@ export function AdminUsersPage() {
         </button>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-4">
+        {[
+          { label: '현재 목록', value: summary.total },
+          { label: '승인 대기', value: summary.inactive },
+          { label: '승인 완료', value: summary.active },
+          { label: '이용 중지', value: summary.leave },
+        ].map((item) => (
+          <div
+            key={item.label}
+            className="rounded-[var(--radius-card)] border border-border bg-card p-4"
+          >
+            <p className="text-sm text-muted-foreground">{item.label}</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">{item.value}</p>
+          </div>
+        ))}
+      </div>
+
       <section className="space-y-4 rounded-[var(--radius-card)] border border-border bg-card p-4">
         <form onSubmit={handleSearch} className="flex flex-col gap-3 md:flex-row">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" strokeWidth={1.5} />
+            <Search
+              className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
+              strokeWidth={1.5}
+            />
             <input
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="이름, 사번, 이메일로 검색"
+              placeholder="이름, 사번, 이메일 검색"
               className="w-full rounded-[var(--radius)] border border-border bg-input-background py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -148,8 +183,21 @@ export function AdminUsersPage() {
         <div className="flex min-h-[320px] items-center justify-center">
           <div className="text-center">
             <div className="inline-block size-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent" />
-            <p className="mt-4 text-muted-foreground">사용자 정보를 불러오는 중입니다.</p>
+            <p className="mt-4 text-muted-foreground">회원 정보를 불러오는 중입니다.</p>
           </div>
+        </div>
+      ) : users.length === 0 ? (
+        <div className="rounded-[var(--radius-card)] border border-dashed border-border bg-card px-6 py-16 text-center">
+          <p className="text-muted-foreground">조건에 맞는 회원이 없습니다.</p>
+          {statusFilter !== 'all' ? (
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className="mt-4 text-sm font-medium text-primary hover:text-[var(--primary-hover)]"
+            >
+              전체 회원 보기
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="overflow-hidden rounded-[var(--radius-card)] border border-border bg-card">
@@ -157,8 +205,11 @@ export function AdminUsersPage() {
             <table className="w-full min-w-[900px]">
               <thead className="border-b border-border bg-[var(--surface-subtle)]">
                 <tr>
-                  {['사번', '이름', '이메일', '상태', '권한', '승인/관리'].map((header) => (
-                    <th key={header} className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  {['사번', '이름', '이메일', '상태', '권한', '관리'].map((header) => (
+                    <th
+                      key={header}
+                      className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground"
+                    >
                       {header}
                     </th>
                   ))}
@@ -189,7 +240,7 @@ export function AdminUsersPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-2">
-                        {user.status === 'inactive' && (
+                        {user.status === 'inactive' ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -201,8 +252,9 @@ export function AdminUsersPage() {
                             <UserCheck className="size-3.5" />
                             승인
                           </button>
-                        )}
-                        {user.status !== 'leave' && (
+                        ) : null}
+
+                        {user.status !== 'leave' ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -214,8 +266,9 @@ export function AdminUsersPage() {
                             <UserX className="size-3.5" />
                             이용 중지
                           </button>
-                        )}
-                        {user.status === 'leave' && (
+                        ) : null}
+
+                        {user.status === 'leave' ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -227,7 +280,7 @@ export function AdminUsersPage() {
                             <CheckCheck className="size-3.5" />
                             재승인
                           </button>
-                        )}
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -262,20 +315,20 @@ export function AdminUsersPage() {
               ))}
             </div>
 
-            <div className="mt-6 flex gap-3">
+            <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setShowGrantModal(false)}
-                className="flex-1 rounded-[var(--radius)] border border-border px-4 py-2 transition-colors hover:bg-muted/20"
+                className="rounded-[var(--radius)] border border-border px-4 py-2 text-sm text-muted-foreground hover:bg-muted/20"
               >
-                취소
+                닫기
               </button>
               <button
                 type="button"
                 onClick={() => {
                   void handleBulkGrant();
                 }}
-                className="flex-1 rounded-[var(--radius)] bg-primary px-4 py-2 text-primary-foreground transition-colors hover:bg-[var(--primary-hover)]"
+                className="rounded-[var(--radius)] bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-[var(--primary-hover)]"
               >
                 지급 실행
               </button>
